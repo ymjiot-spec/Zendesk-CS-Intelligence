@@ -1,0 +1,285 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Ticket {
+  id               BigInt   @id @default(autoincrement())
+  sourceKey        String   @default("default") @map("source_key") @db.VarChar(50)
+  zendeskTicketId  String   @map("zendesk_ticket_id") @db.VarChar(255)
+  createdAt        DateTime @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime @map("updated_at") @db.Timestamptz()
+  inquiryCategory  String   @map("inquiry_category") @db.VarChar(255)
+  ticketStatus     String   @map("ticket_status") @db.VarChar(255)
+  subject          String   @map("subject") @db.VarChar(1000)
+  description      String   @map("description") @db.Text
+  isExcluded       Boolean  @default(false) @map("is_excluded")
+  fetchedAt        DateTime @map("fetched_at") @db.Timestamptz()
+
+  @@unique([sourceKey, zendeskTicketId], name: "uq_tickets_source_zendesk_id")
+  @@index([sourceKey, createdAt, isExcluded], name: "idx_tickets_source_created_at")
+  @@index([sourceKey, inquiryCategory, createdAt], name: "idx_tickets_source_category_created_at")
+  @@map("tickets")
+}
+
+model DailyAggregation {
+  id              BigInt   @id @default(autoincrement())
+  sourceKey       String   @default("ALL") @map("source_key") @db.VarChar(50)
+  aggregationDate DateTime @map("aggregation_date") @db.Date
+  totalCount      Int      @map("total_count")
+  excludedCount   Int      @map("excluded_count")
+  avg7days        Float    @map("avg_7days")
+  avg30days       Float    @map("avg_30days")
+  computedAt      DateTime @map("computed_at") @db.Timestamptz()
+
+  @@unique([sourceKey, aggregationDate], name: "uq_daily_aggregations_source_date")
+  @@map("daily_aggregations")
+}
+
+model CategoryAggregation {
+  id                    BigInt   @id @default(autoincrement())
+  sourceKey             String   @default("ALL") @map("source_key") @db.VarChar(50)
+  aggregationDate       DateTime @map("aggregation_date") @db.Date
+  inquiryCategory       String   @map("inquiry_category") @db.VarChar(255)
+  count                 Int
+  percentage            Float
+  prevDayDiff           Int      @map("prev_day_diff")
+  prevWeekSameDayDiff   Int      @map("prev_week_same_day_diff")
+  computedAt            DateTime @map("computed_at") @db.Timestamptz()
+
+  @@unique([sourceKey, aggregationDate, inquiryCategory], name: "uq_category_aggregations_source_date_category")
+  @@map("category_aggregations")
+}
+
+model HourlyAggregation {
+  id              BigInt   @id @default(autoincrement())
+  sourceKey       String   @default("ALL") @map("source_key") @db.VarChar(50)
+  aggregationDate DateTime @map("aggregation_date") @db.Date
+  hour            Int      @map("hour") @db.SmallInt
+  dayOfWeek       Int      @map("day_of_week") @db.SmallInt
+  count           Int
+  computedAt      DateTime @map("computed_at") @db.Timestamptz()
+
+  @@unique([sourceKey, aggregationDate, hour], name: "uq_hourly_aggregations_source_date_hour")
+  @@index([sourceKey, aggregationDate], name: "idx_hourly_aggregations_source_date")
+  @@map("hourly_aggregations")
+}
+
+model AnomalyEvent {
+  id              String   @id @default(uuid()) @db.Uuid
+  detectedAt      DateTime @map("detected_at") @db.Timestamptz()
+  detectionType   String   @map("detection_type") @db.VarChar(50)
+  metric          String   @db.VarChar(255)
+  currentValue    Float    @map("current_value")
+  baselineValue   Float    @map("baseline_value")
+  deviation       Float
+  severity        String   @db.VarChar(50)
+  isAcknowledged  Boolean  @default(false) @map("is_acknowledged")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  aiAnalysis        AiAnalysis?
+  notificationLogs  NotificationLog[]
+  aiEventSuggestion AiEventSuggestion?
+  actionSuggestions ActionSuggestion[]
+
+  @@index([detectedAt], name: "idx_anomaly_events_detected_at")
+  @@map("anomaly_events")
+}
+
+model AiAnalysis {
+  id                     String   @id @default(uuid()) @db.Uuid
+  anomalyEventId         String   @unique @map("anomaly_event_id") @db.Uuid
+  categoryBreakdown      Json     @map("category_breakdown") @db.JsonB
+  commonPatterns         String   @map("common_patterns") @db.Text
+  hypotheses             Json     @db.JsonB
+  representativeTicketIds Json    @map("representative_ticket_ids") @db.JsonB
+  eventCorrelation       Json     @map("event_correlation") @db.JsonB
+  generatedAt            DateTime @map("generated_at") @db.Timestamptz()
+
+  anomalyEvent AnomalyEvent @relation(fields: [anomalyEventId], references: [id], onDelete: Cascade)
+
+  @@map("ai_analyses")
+}
+
+model EventLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @db.VarChar(255)
+  eventType   String   @map("event_type") @db.VarChar(50)
+  occurredAt  DateTime @map("occurred_at") @db.Timestamptz()
+  description String   @db.Text
+  memo        String?  @db.Text
+  urls        Json     @default("[]") @db.JsonB
+  tags        Json     @default("[]") @db.JsonB
+  impactScore Float?   @map("impact_score")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  @@index([occurredAt], name: "idx_event_logs_occurred_at")
+  @@index([eventType], name: "idx_event_logs_event_type")
+  @@map("event_logs")
+}
+
+model EventTag {
+  id        BigInt   @id @default(autoincrement())
+  name      String   @unique @db.VarChar(255)
+  isDefault Boolean  @default(false) @map("is_default")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@map("event_tags")
+}
+
+model NotificationRule {
+  id                String   @id @default(uuid()) @db.Uuid
+  channel           String   @db.VarChar(50)
+  destination       String   @db.VarChar(500)
+  triggerConditions Json     @map("trigger_conditions") @db.JsonB
+  enabled           Boolean  @default(true)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  notificationLogs NotificationLog[]
+
+  @@map("notification_rules")
+}
+
+model NotificationLog {
+  id                 String   @id @default(uuid()) @db.Uuid
+  notificationRuleId String   @map("notification_rule_id") @db.Uuid
+  anomalyEventId     String   @map("anomaly_event_id") @db.Uuid
+  channel            String   @db.VarChar(50)
+  status             String   @db.VarChar(50)
+  retryCount         Int      @default(0) @map("retry_count")
+  errorMessage       String?  @map("error_message") @db.Text
+  sentAt             DateTime @map("sent_at") @db.Timestamptz()
+
+  notificationRule NotificationRule @relation(fields: [notificationRuleId], references: [id], onDelete: Cascade)
+  anomalyEvent     AnomalyEvent     @relation(fields: [anomalyEventId], references: [id], onDelete: Cascade)
+
+  @@index([anomalyEventId], name: "idx_notification_logs_anomaly_event_id")
+  @@map("notification_logs")
+}
+
+model AnomalySetting {
+  id                   String   @id @default(uuid()) @db.Uuid
+  thresholds           Json     @db.JsonB
+  movingAverageDays    Int      @map("moving_average_days")
+  sigmaMultiplier      Float    @map("sigma_multiplier")
+  dayOfWeekSeasonality Boolean  @default(false) @map("day_of_week_seasonality")
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  @@map("anomaly_settings")
+}
+
+model AutoReport {
+  id               String    @id @default(uuid()) @db.Uuid
+  period           String    @db.VarChar(50)
+  startDate        DateTime  @map("start_date") @db.Date
+  endDate          DateTime  @map("end_date") @db.Date
+  content          Json      @db.JsonB
+  narrativeSummary String    @map("narrative_summary") @db.Text
+  generatedAt      DateTime  @map("generated_at") @db.Timestamptz()
+  distributedAt    DateTime? @map("distributed_at") @db.Timestamptz()
+
+  @@index([generatedAt], name: "idx_auto_reports_generated_at")
+  @@map("auto_reports")
+}
+
+model ReportSetting {
+  id                   String   @id @default(uuid()) @db.Uuid
+  schedule             Json     @db.JsonB
+  distributionChannels Json     @map("distribution_channels") @db.JsonB
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  @@map("report_settings")
+}
+
+model PipelineState {
+  id                     String    @id @db.VarChar(255)
+  lastIncrementalCursor  BigInt    @default(0) @map("last_incremental_cursor")
+  lastBatchRunAt         DateTime? @map("last_batch_run_at") @db.Timestamptz()
+  lastIncrementalRunAt   DateTime? @map("last_incremental_run_at") @db.Timestamptz()
+  dataSourceStatus       Json      @default("{}") @map("data_source_status") @db.JsonB
+  updatedAt              DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  @@map("pipeline_state")
+}
+
+model AiEventSuggestion {
+  id                 String   @id @default(uuid()) @db.Uuid
+  anomalyEventId     String   @unique @map("anomaly_event_id") @db.Uuid
+  suggestedEventType String   @map("suggested_event_type") @db.VarChar(50)
+  suggestedDate      DateTime @map("suggested_date") @db.Timestamptz()
+  reason             String   @db.Text
+  responseStatus     String   @default("pending") @map("response_status") @db.VarChar(50)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  anomalyEvent AnomalyEvent @relation(fields: [anomalyEventId], references: [id], onDelete: Cascade)
+
+  @@map("ai_event_suggestions")
+}
+
+model AlertRule {
+  id                   String   @id @default(uuid()) @db.Uuid
+  name                 String   @db.VarChar(255)
+  triggerType          String   @map("trigger_type") @db.VarChar(50)
+  conditions           Json     @db.JsonB
+  targetCategory       String?  @map("target_category") @db.VarChar(255)
+  notificationChannels Json     @map("notification_channels") @db.JsonB
+  cooldownMinutes      Int      @default(60) @map("cooldown_minutes")
+  enabled              Boolean  @default(true)
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  firingRecords AlertFiringRecord[]
+
+  @@map("alert_rules")
+}
+
+model AlertFiringRecord {
+  id                     String    @id @default(uuid()) @db.Uuid
+  alertRuleId            String    @map("alert_rule_id") @db.Uuid
+  firedAt                DateTime  @map("fired_at") @db.Timestamptz()
+  detectedValue          Float     @map("detected_value")
+  baselineValue          Float     @map("baseline_value")
+  deviation              Float
+  representativeTicketIds Json     @map("representative_ticket_ids") @db.JsonB
+  status                 String    @default("unresolved") @db.VarChar(50)
+  resolvedAt             DateTime? @map("resolved_at") @db.Timestamptz()
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  alertRule AlertRule @relation(fields: [alertRuleId], references: [id], onDelete: Cascade)
+
+  @@index([alertRuleId], name: "idx_alert_firing_records_alert_rule_id")
+  @@index([firedAt], name: "idx_alert_firing_records_fired_at")
+  @@map("alert_firing_records")
+}
+
+model ActionSuggestion {
+  id               String   @id @default(uuid()) @db.Uuid
+  anomalyEventId   String   @map("anomaly_event_id") @db.Uuid
+  actionType       String   @map("action_type") @db.VarChar(100)
+  title            String   @db.VarChar(500)
+  description      String   @db.Text
+  priority         String   @db.VarChar(20)
+  reasoning        String   @db.Text
+  relatedCategory  String?  @map("related_category") @db.VarChar(255)
+  responseStatus   String   @default("pending") @map("response_status") @db.VarChar(50)
+  executionStatus  String   @default("not_started") @map("execution_status") @db.VarChar(50)
+  effectMetrics    Json?    @map("effect_metrics") @db.JsonB
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  anomalyEvent AnomalyEvent @relation(fields: [anomalyEventId], references: [id], onDelete: Cascade)
+
+  @@index([anomalyEventId], name: "idx_action_suggestions_anomaly_event_id")
+  @@map("action_suggestions")
+}
