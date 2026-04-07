@@ -4,11 +4,12 @@ import React from 'react';
 import type { DailySummary } from '@/types/aggregation';
 
 function TrendIndicator({ trend, diff, rate }: { trend: DailySummary['trend']; diff: number; rate: number }) {
-  const config = {
+  const configs = {
     increase: { arrow: '↑', color: 'text-red-600', bg: 'bg-red-50' },
     decrease: { arrow: '↓', color: 'text-green-600', bg: 'bg-green-50' },
     flat: { arrow: '→', color: 'text-gray-500', bg: 'bg-gray-50' },
-  }[trend];
+  };
+  const config = configs[trend] ?? configs.flat;
 
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${config.color} ${config.bg}`}>

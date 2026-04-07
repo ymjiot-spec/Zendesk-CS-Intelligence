@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { AnomalySettings, NotificationSettings, PipelineStatus } from '@/components/settings';
+import CategoryFilterSettings from '@/components/settings/CategoryFilterSettings';
 import type { AnomalyDetectorConfig } from '@/types/anomaly';
 import type { NotificationRule } from '@/types/notification';
 
@@ -104,6 +105,12 @@ export default function SettingsPage() {
     <DashboardLayout>
       <div className="space-y-6">
         <h2 className="text-sm font-semibold text-gray-800">設定</h2>
+        <CategoryFilterSettings sources={[
+          { key: 'starservicesupport', name: 'STAR' },
+          { key: 'dmobilehelp', name: 'JTBC' },
+          { key: 'jcnhelp', name: 'JCN' },
+          { key: 'mpcahelp', name: 'MPCA' },
+        ]} />
         <AnomalySettings config={anomalyConfig} loading={loading} onSave={handleSaveAnomalyConfig} />
         <NotificationSettings
           rules={notificationRules}

@@ -2,6 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import type { DailySummary } from '@/types/aggregation';
 
+function jstDateRange(dateStr: string): { start: Date; end: Date } {
+  const start = new Date(dateStr + 'T00:00:00+09:00');
+  const end = new Date(dateStr + 'T00:00:00+09:00');
+  end.setDate(end.getDate() + 1);
+  return { start, end };
+}
+
+function prevDateStr(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00+09:00');
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().split('T')[0];
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl;
@@ -13,43 +26,56 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'startDate and endDate are required' }, { status: 400 });
     }
 
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    end.setDate(end.getDate() + 1);
+    const sourceWhere = source !== 'ALL' ? { sourceKey: source } : {};
+    const range = jstDateRange(endDate);
 
-    // 当日集計
-    const agg = await prisma.dailyAggregation.findFirst({
-      where: { sourceKey: source, aggregationDate: { gte: new Date(startDate), lt: end } },
-      orderBy: { aggregationDate: 'desc' },
+    // category_filter_settingsから除外カテゴリを取得
+    const excludedCats: { inquiry_category: string }[] = await (prisma as any).$queryRaw`
+      SELECT inquiry_category FROM category_filter_settings 
+      WHERE is_included = false ${source !== 'ALL' ? (prisma as any).sql`AND source_key = ${source}` : (prisma as any).sql``}
+    `.catch(() => []);
+    const excludedCatNames = excludedCats.map((c: any) => c.inquiry_category);
+    const catWhere = excludedCatNames.length > 0 ? { inquiryCategory: { notIn: excludedCatNames } } : {};
+
+    const totalCount = await prisma.ticket.count({
+      where: { isExcluded: false, ...sourceWhere, ...catWhere, createdAt: { gte: range.start, lt: range.end } },
     });
 
-    // 前日集計
-    const prevDay = new Date(start);
-    prevDay.setDate(prevDay.getDate() - 1);
-    const prevAgg = await prisma.dailyAggregation.findFirst({
-      where: { sourceKey: source, aggregationDate: { gte: prevDay, lt: start } },
+    const prevRange = jstDateRange(prevDateStr(endDate));
+    const prevCount = await prisma.ticket.count({
+      where: { isExcluded: false, ...sourceWhere, createdAt: { gte: prevRange.start, lt: prevRange.end } },
     });
 
-    const totalCount = agg?.totalCount ?? 0;
-    const prevCount = prevAgg?.totalCount ?? 0;
+    const sevenDaysAgo = new Date(range.start.getTime() - 7 * 86400000);
+    const last7 = await prisma.ticket.count({
+      where: { isExcluded: false, ...sourceWhere, createdAt: { gte: sevenDaysAgo, lt: range.end } },
+    });
+    const avg7 = Math.round((last7 / 7) * 10) / 10;
+
+    const thirtyDaysAgo = new Date(range.start.getTime() - 30 * 86400000);
+    const last30 = await prisma.ticket.count({
+      where: { isExcluded: false, ...sourceWhere, createdAt: { gte: thirtyDaysAgo, lt: range.end } },
+    });
+    const avg30 = Math.round((last30 / 30) * 10) / 10;
+
     const diff = totalCount - prevCount;
-    const rate = prevCount > 0 ? (diff / prevCount) * 100 : 0;
+    const rate = prevCount > 0 ? Math.round((diff / prevCount) * 1000) / 10 : 0;
 
     const data: DailySummary = {
-      date: new Date(startDate),
+      date: new Date(endDate),
       totalCount,
       previousDayCount: prevCount,
       dayOverDayDiff: diff,
-      dayOverDayRate: Math.round(rate * 10) / 10,
-      avg7Days: agg?.avg7days ?? 0,
-      avg30Days: agg?.avg30days ?? 0,
-      trend: diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat',
+      dayOverDayRate: rate,
+      avg7Days: avg7,
+      avg30Days: avg30,
+      trend: diff > 0 ? 'increase' : diff < 0 ? 'decrease' : 'flat',
     };
 
     return NextResponse.json({
       success: true,
       data,
-      meta: { lastUpdatedAt: agg?.computedAt?.toISOString() ?? new Date().toISOString(), populationInfo: { totalCount, excludedCount: agg?.excludedCount ?? 0 } },
+      meta: { lastUpdatedAt: new Date().toISOString(), populationInfo: { totalCount, excludedCount: 0 } },
     });
   } catch (error) {
     return NextResponse.json({ success: false, data: null, error: error instanceof Error ? error.message : 'error' }, { status: 500 });
