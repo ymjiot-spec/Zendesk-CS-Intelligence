@@ -31,7 +31,44 @@ export async function fetchAndSaveTickets(source: ZendeskSourceConfig): Promise<
 
     // バッチupsert
     for (const t of tickets) {
-      const category = t.tags?.[0] ?? 'その他';
+      // カスタムフィールドから「お問い合わせ項目」を取得
+      let category = 'その他';
+      if (source.inquiryFieldId) {
+        const fields = t.custom_fields ?? t.fields ?? [];
+        const field = fields.find((f: any) => f.id === source.inquiryFieldId);
+        if (field?.value) {
+          category = String(field.value);
+        }
+      } else {
+        category = t.tags?.[0] ?? 'その他';
+      }
+
+      // カスタムフィールドから「チケットステータス」を取得
+      let ticketStatus = t.status ?? 'open';
+      if (source.statusFieldId) {
+        const fields = t.custom_fields ?? (t as any).fields ?? [];
+        const field = fields.find((f: any) => f.id === source.statusFieldId);
+        if (field?.value) {
+          ticketStatus = String(field.value);
+        }
+        // デバッグ: 最初の1件だけログ
+        if (savedCount === 0) {
+          console.log(`[DEBUG] statusFieldId=${source.statusFieldId}, found=${!!field}, value=${field?.value}, fields_count=${fields.length}`);
+        }
+      }
+      // Z始まりのチケットステータスは除外
+      const isExcluded = ticketStatus.toLowerCase().startsWith('z');
+
+      // コールセンター判定（【FN】チケット対応フィールドに値があればCC）
+      let channelType = 'ticket';
+      if (source.ccFieldId) {
+        const fields = t.custom_fields ?? (t as any).fields ?? [];
+        const ccField = fields.find((f: any) => f.id === source.ccFieldId);
+        if (ccField?.value && String(ccField.value).trim() !== '') {
+          channelType = 'call_center';
+        }
+      }
+
       await prisma.ticket.upsert({
         where: {
           uq_tickets_source_zendesk_id: {
@@ -41,8 +78,10 @@ export async function fetchAndSaveTickets(source: ZendeskSourceConfig): Promise<
         },
         update: {
           updatedAt: new Date(t.updated_at),
-          ticketStatus: t.status,
+          ticketStatus: ticketStatus,
           inquiryCategory: category,
+          isExcluded: isExcluded,
+          channelType: channelType,
           fetchedAt: new Date(),
         },
         create: {
@@ -51,9 +90,11 @@ export async function fetchAndSaveTickets(source: ZendeskSourceConfig): Promise<
           createdAt: new Date(t.created_at),
           updatedAt: new Date(t.updated_at),
           inquiryCategory: category,
-          ticketStatus: t.status,
+          ticketStatus: ticketStatus,
           subject: t.subject ?? '',
           description: t.description ?? '',
+          isExcluded: isExcluded,
+          channelType: channelType,
           fetchedAt: new Date(),
         },
       });

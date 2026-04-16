@@ -5,7 +5,7 @@ import DashboardLayout from '@/components/layout/DashboardLayout';
 import DateRangeFilter, { type DateRange } from '@/components/filters/DateRangeFilter';
 import { DailySummaryCard, CategoryBreakdown, MatrixTable, HourlyChart, Heatmap } from '@/components/dashboard';
 import { AlertBanner } from '@/components/alert';
-import type { DailySummary, CategoryBreakdown as CategoryBreakdownType, MatrixRow, HourlyData, HeatmapData } from '@/types/aggregation';
+import type { CategoryBreakdown as CategoryBreakdownType, MatrixRow, HourlyData, HeatmapData } from '@/types/aggregation';
 import type { AlertFiringRecord } from '@/types/alert';
 
 interface SourceConfig {
@@ -16,7 +16,7 @@ interface SourceConfig {
 export default function DashboardPage() {
   const [dateRange, setDateRange] = useState<DateRange | null>(null);
   const [loading, setLoading] = useState(true);
-  const [summary, setSummary] = useState<DailySummary | null>(null);
+  const [summary, setSummary] = useState<any>(null);
   const [categories, setCategories] = useState<CategoryBreakdownType[]>([]);
   const [matrix, setMatrix] = useState<MatrixRow[]>([]);
   const [hourly, setHourly] = useState<HourlyData[]>([]);
@@ -24,6 +24,7 @@ export default function DashboardPage() {
   const [alerts, setAlerts] = useState<AlertFiringRecord[]>([]);
   const [sources, setSources] = useState<SourceConfig[]>([]);
   const [activeSource, setActiveSource] = useState<string>('ALL');
+  const [activeChannel, setActiveChannel] = useState<string>('all');
   const [syncing, setSyncing] = useState(false);
 
   // 会社一覧取得
@@ -36,10 +37,10 @@ export default function DashboardPage() {
       .catch(() => {});
   }, []);
 
-  const fetchData = useCallback(async (range: DateRange, source: string) => {
+  const fetchData = useCallback(async (range: DateRange, source: string, channel: string) => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ startDate: range.startDate, endDate: range.endDate, source });
+      const params = new URLSearchParams({ startDate: range.startDate, endDate: range.endDate, source, channel });
       const [sumRes, catRes, matRes, hourRes, alertRes] = await Promise.allSettled([
         fetch(`/api/dashboard/summary?${params}`),
         fetch(`/api/dashboard/categories?${params}`),
@@ -77,12 +78,17 @@ export default function DashboardPage() {
 
   const handleDateChange = useCallback((range: DateRange) => {
     setDateRange(range);
-    fetchData(range, activeSource);
-  }, [fetchData, activeSource]);
+    fetchData(range, activeSource, activeChannel);
+  }, [fetchData, activeSource, activeChannel]);
 
   const handleSourceChange = (source: string) => {
     setActiveSource(source);
-    if (dateRange) fetchData(dateRange, source);
+    if (dateRange) fetchData(dateRange, source, activeChannel);
+  };
+
+  const handleChannelChange = (channel: string) => {
+    setActiveChannel(channel);
+    if (dateRange) fetchData(dateRange, activeSource, channel);
   };
 
   const handleSync = async () => {
@@ -91,7 +97,7 @@ export default function DashboardPage() {
       const res = await fetch('/api/pipeline', { method: 'POST' });
       const json = await res.json();
       if (json.success && dateRange) {
-        fetchData(dateRange, activeSource);
+        fetchData(dateRange, activeSource, activeChannel);
       }
     } catch {
       // ignore
@@ -134,6 +140,27 @@ export default function DashboardPage() {
           >
             {syncing ? '同期中...' : '🔄 Zendesk同期'}
           </button>
+        </div>
+
+        {/* チャネルフィルタ */}
+        <div className="flex gap-1">
+          {[
+            { key: 'all', label: '全て' },
+            { key: 'ticket', label: '📧 チケットのみ' },
+            { key: 'call_center', label: '📞 コールセンター' },
+          ].map((ch) => (
+            <button
+              key={ch.key}
+              onClick={() => handleChannelChange(ch.key)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md border transition-all ${
+                activeChannel === ch.key
+                  ? 'bg-purple-600 text-white border-purple-600'
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-purple-50 hover:border-purple-300'
+              }`}
+            >
+              {ch.label}
+            </button>
+          ))}
         </div>
 
         <DateRangeFilter onChange={handleDateChange} />

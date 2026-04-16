@@ -1,24 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-
-function jstDateRange(dateStr: string): { start: Date; end: Date } {
-  const start = new Date(dateStr + 'T00:00:00+09:00');
-  const end = new Date(dateStr + 'T00:00:00+09:00');
-  end.setDate(end.getDate() + 1);
-  return { start, end };
-}
-
-function prevDateStr(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00+09:00');
-  d.setDate(d.getDate() - 1);
-  return d.toISOString().split('T')[0];
-}
-
-function weekAgoDateStr(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00+09:00');
-  d.setDate(d.getDate() - 7);
-  return d.toISOString().split('T')[0];
-}
+import { jstDateRange, prevDay, weekAgo } from '@/lib/date-jst';
+import { buildBaseWhere } from '@/lib/dashboard-query';
 
 export async function GET(request: NextRequest) {
   try {
@@ -26,35 +9,44 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
     const source = searchParams.get('source') ?? 'ALL';
+    const channel = searchParams.get('channel') ?? 'all';
 
     if (!startDate || !endDate) {
       return NextResponse.json({ success: false, error: 'startDate and endDate required' }, { status: 400 });
     }
 
-    const sourceWhere = source !== 'ALL' ? { sourceKey: source } : {};
-    const range = jstDateRange(endDate);
+    // --- 選択期間の項目別件数 ---
+    const range = jstDateRange(startDate, endDate);
+    const baseWhere = await buildBaseWhere(source, channel, range);
 
     const rows = await prisma.ticket.groupBy({
       by: ['inquiryCategory'],
-      where: { isExcluded: false, ...sourceWhere, createdAt: { gte: range.start, lt: range.end } },
+      where: baseWhere as any,
       _count: true,
       orderBy: { _count: { inquiryCategory: 'desc' } },
     });
 
+    // 分母は除外後の総件数
     const total = rows.reduce((s, r) => s + r._count, 0);
 
-    const prevRange = jstDateRange(prevDateStr(endDate));
+    // --- 前日の項目別件数 ---
+    const prevDateStr = prevDay(endDate);
+    const prevRange = jstDateRange(prevDateStr, prevDateStr);
+    const prevWhere = await buildBaseWhere(source, channel, prevRange);
     const prevRows = await prisma.ticket.groupBy({
       by: ['inquiryCategory'],
-      where: { isExcluded: false, ...sourceWhere, createdAt: { gte: prevRange.start, lt: prevRange.end } },
+      where: prevWhere as any,
       _count: true,
     });
     const prevMap = new Map(prevRows.map(r => [r.inquiryCategory, r._count]));
 
-    const weekRange = jstDateRange(weekAgoDateStr(endDate));
+    // --- 前週同曜日の項目別件数 ---
+    const weekAgoStr = weekAgo(endDate);
+    const weekRange = jstDateRange(weekAgoStr, weekAgoStr);
+    const weekWhere = await buildBaseWhere(source, channel, weekRange);
     const weekRows = await prisma.ticket.groupBy({
       by: ['inquiryCategory'],
-      where: { isExcluded: false, ...sourceWhere, createdAt: { gte: weekRange.start, lt: weekRange.end } },
+      where: weekWhere as any,
       _count: true,
     });
     const weekMap = new Map(weekRows.map(r => [r.inquiryCategory, r._count]));
@@ -74,7 +66,7 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({ success: true, data });
+    return NextResponse.json({ success: true, data, meta: { total } });
   } catch (error) {
     return NextResponse.json({ success: false, data: [], error: error instanceof Error ? error.message : 'error' }, { status: 500 });
   }

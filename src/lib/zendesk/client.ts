@@ -29,20 +29,29 @@ export class ZendeskClient {
     this.authHeader = `Basic ${credentials}`;
   }
 
-  private async fetch<T>(path: string): Promise<T> {
+  private async fetch<T>(path: string, maxRetries = 3): Promise<T> {
     const url = `${this.baseUrl}${path}`;
-    const res = await fetch(url, {
-      headers: {
-        'Authorization': this.authHeader,
-        'Content-Type': 'application/json',
-      },
-      cache: 'no-store',
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Zendesk API error ${res.status}: ${text}`);
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const res = await fetch(url, {
+        headers: {
+          'Authorization': this.authHeader,
+          'Content-Type': 'application/json',
+        },
+        cache: 'no-store',
+      });
+      if (res.status === 429) {
+        const retryAfter = parseInt(res.headers.get('retry-after') ?? '60', 10);
+        console.log(`[Rate Limited] Waiting ${retryAfter}s before retry (attempt ${attempt + 1}/${maxRetries})`);
+        await new Promise(r => setTimeout(r, retryAfter * 1000));
+        continue;
+      }
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Zendesk API error ${res.status}: ${text}`);
+      }
+      return res.json() as Promise<T>;
     }
-    return res.json() as Promise<T>;
+    throw new Error(`Zendesk API: max retries exceeded after 429 rate limiting`);
   }
 
   /** 更新日時でフィルタしてチケットを取得 */

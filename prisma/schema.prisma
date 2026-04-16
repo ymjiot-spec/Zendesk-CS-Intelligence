@@ -23,6 +23,7 @@ model Ticket {
   subject          String   @map("subject") @db.VarChar(1000)
   description      String   @map("description") @db.Text
   isExcluded       Boolean  @default(false) @map("is_excluded")
+  channelType      String   @default("ticket") @map("channel_type") @db.VarChar(50)
   fetchedAt        DateTime @map("fetched_at") @db.Timestamptz()
 
   @@unique([sourceKey, zendeskTicketId], name: "uq_tickets_source_zendesk_id")

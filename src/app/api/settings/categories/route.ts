@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
         COALESCE((SELECT COUNT(*)::int FROM tickets t WHERE t.source_key = cfs.source_key AND t.inquiry_category = cfs.inquiry_category), 0) as ticket_count
       FROM category_filter_settings cfs
       WHERE cfs.source_key = $1
-      ORDER BY ticket_count DESC
+      ORDER BY cfs.sort_order ASC, ticket_count DESC
     `, source);
 
     return NextResponse.json({ success: true, data: rows });

@@ -12,43 +12,70 @@ const QUICK_SELECT_OPTIONS: { label: string; value: QuickSelect }[] = [
   { label: '先月', value: 'last_month' },
 ];
 
-function resolveQuickSelect(preset: QuickSelect): { startDate: string; endDate: string } {
+/**
+ * JST基準で現在の日付文字列を返す。
+ * ブラウザのタイムゾーンに関係なくJST日付を返す。
+ */
+function todayJST(): string {
   const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const fmt = (d: Date) => d.toISOString().split('T')[0];
+  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  return jst.toISOString().split('T')[0];
+}
+
+/**
+ * JST基準でN日前の日付文字列を返す。
+ */
+function shiftDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr + 'T12:00:00+09:00');
+  d.setDate(d.getDate() + days);
+  const jst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  return jst.toISOString().split('T')[0];
+}
+
+function resolveQuickSelect(preset: QuickSelect): { startDate: string; endDate: string } {
+  const today = todayJST();
 
   switch (preset) {
     case 'today':
-      return { startDate: fmt(today), endDate: fmt(today) };
+      return { startDate: today, endDate: today };
     case 'yesterday': {
-      const y = new Date(today);
-      y.setDate(y.getDate() - 1);
-      return { startDate: fmt(y), endDate: fmt(y) };
+      const y = shiftDays(today, -1);
+      return { startDate: y, endDate: y };
     }
     case 'this_week': {
-      const day = today.getDay();
-      const monday = new Date(today);
-      monday.setDate(today.getDate() - ((day + 6) % 7));
-      return { startDate: fmt(monday), endDate: fmt(today) };
+      // 月曜始まり
+      const d = new Date(today + 'T12:00:00+09:00');
+      const dayOfWeek = d.getDay(); // 0=Sun
+      const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      const monday = shiftDays(today, -diff);
+      return { startDate: monday, endDate: today };
     }
     case 'last_week': {
-      const day = today.getDay();
-      const thisMonday = new Date(today);
-      thisMonday.setDate(today.getDate() - ((day + 6) % 7));
-      const lastMonday = new Date(thisMonday);
-      lastMonday.setDate(thisMonday.getDate() - 7);
-      const lastSunday = new Date(thisMonday);
-      lastSunday.setDate(thisMonday.getDate() - 1);
-      return { startDate: fmt(lastMonday), endDate: fmt(lastSunday) };
+      const d = new Date(today + 'T12:00:00+09:00');
+      const dayOfWeek = d.getDay();
+      const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      const thisMonday = shiftDays(today, -diff);
+      const lastMonday = shiftDays(thisMonday, -7);
+      const lastSunday = shiftDays(thisMonday, -1);
+      return { startDate: lastMonday, endDate: lastSunday };
     }
     case 'this_month': {
-      const first = new Date(today.getFullYear(), today.getMonth(), 1);
-      return { startDate: fmt(first), endDate: fmt(today) };
+      const first = today.slice(0, 8) + '01';
+      return { startDate: first, endDate: today };
     }
     case 'last_month': {
-      const first = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-      const last = new Date(today.getFullYear(), today.getMonth(), 0);
-      return { startDate: fmt(first), endDate: fmt(last) };
+      const year = parseInt(today.slice(0, 4), 10);
+      const month = parseInt(today.slice(5, 7), 10);
+      let prevYear = year;
+      let prevMonth = month - 1;
+      if (prevMonth === 0) {
+        prevMonth = 12;
+        prevYear -= 1;
+      }
+      const first = `${prevYear}-${String(prevMonth).padStart(2, '0')}-01`;
+      const lastDay = new Date(year, month - 1, 0).getDate();
+      const last = `${prevYear}-${String(prevMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+      return { startDate: first, endDate: last };
     }
   }
 }
