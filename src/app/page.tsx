@@ -3,14 +3,33 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import DateRangeFilter, { type DateRange } from '@/components/filters/DateRangeFilter';
-import { DailySummaryCard, CategoryBreakdown, MatrixTable, HourlyChart, Heatmap } from '@/components/dashboard';
+import { CategoryBreakdown, MatrixTable, HourlyChart, Heatmap } from '@/components/dashboard';
 import { AlertBanner } from '@/components/alert';
 import type { CategoryBreakdown as CategoryBreakdownType, MatrixRow, HourlyData, HeatmapData } from '@/types/aggregation';
 import type { AlertFiringRecord } from '@/types/alert';
 
-interface SourceConfig {
-  key: string;
-  name: string;
+interface SourceConfig { key: string; name: string; }
+
+// --- KPIカード ---
+function KpiCard({ label, value, sub, diff, rate, color }: {
+  label: string; value: number | string; sub?: string;
+  diff?: number; rate?: number; color?: string;
+}) {
+  const diffColor = (diff ?? 0) > 0 ? 'text-red-600' : (diff ?? 0) < 0 ? 'text-green-600' : 'text-gray-400';
+  const arrow = (diff ?? 0) > 0 ? '↑' : (diff ?? 0) < 0 ? '↓' : '→';
+  return (
+    <div className={`bg-white rounded-xl border p-4 ${color === 'red' ? 'border-red-200' : 'border-gray-200'}`}>
+      <div className="text-[11px] text-gray-500 mb-1">{label}</div>
+      <div className="text-2xl font-bold text-gray-900">{value}<span className="text-sm font-normal text-gray-400 ml-1">件</span></div>
+      {diff !== undefined && (
+        <div className={`text-xs mt-1 ${diffColor}`}>
+          {arrow} {diff >= 0 ? '+' : ''}{diff}件
+          {rate !== undefined && ` (${rate >= 0 ? '+' : ''}${rate}%)`}
+        </div>
+      )}
+      {sub && <div className="text-[10px] text-gray-400 mt-1">{sub}</div>}
+    </div>
+  );
 }
 
 export default function DashboardPage() {
@@ -27,53 +46,36 @@ export default function DashboardPage() {
   const [activeChannel, setActiveChannel] = useState<string>('all');
   const [syncing, setSyncing] = useState(false);
 
-  // 会社一覧取得
   useEffect(() => {
-    fetch('/api/pipeline')
-      .then((r) => r.json())
-      .then((j) => {
-        if (j.success) setSources(Array.isArray(j.data?.sources) ? j.data.sources : []);
-      })
-      .catch(() => {});
+    fetch('/api/pipeline').then(r => r.json()).then(j => {
+      if (j.success) setSources(Array.isArray(j.data?.sources) ? j.data.sources : []);
+    }).catch(() => {});
   }, []);
 
   const fetchData = useCallback(async (range: DateRange, source: string, channel: string) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ startDate: range.startDate, endDate: range.endDate, source, channel });
+      // マトリクスは常に直近7日分を取得
+      const matEnd = range.endDate;
+      const matStartDate = new Date(matEnd + 'T00:00:00+09:00');
+      matStartDate.setDate(matStartDate.getDate() - 6);
+      const matStart = `${matStartDate.getFullYear()}-${String(matStartDate.getMonth()+1).padStart(2,'0')}-${String(matStartDate.getDate()).padStart(2,'0')}`;
+      const matParams = new URLSearchParams({ startDate: matStart, endDate: matEnd, source, channel });
+
       const [sumRes, catRes, matRes, hourRes, alertRes] = await Promise.allSettled([
         fetch(`/api/dashboard/summary?${params}`),
         fetch(`/api/dashboard/categories?${params}`),
-        fetch(`/api/dashboard/matrix?${params}`),
+        fetch(`/api/dashboard/matrix?${matParams}`),
         fetch(`/api/dashboard/hourly?${params}`),
         fetch(`/api/alerts/history?status=unresolved`),
       ]);
-
-      if (sumRes.status === 'fulfilled' && sumRes.value.ok) {
-        const json = await sumRes.value.json();
-        setSummary(json.data ?? json);
-      }
-      if (catRes.status === 'fulfilled' && catRes.value.ok) {
-        const json = await catRes.value.json();
-        setCategories(Array.isArray(json.data) ? json.data : []);
-      }
-      if (matRes.status === 'fulfilled' && matRes.value.ok) {
-        const json = await matRes.value.json();
-        setMatrix(Array.isArray(json.data) ? json.data : []);
-      }
-      if (hourRes.status === 'fulfilled' && hourRes.value.ok) {
-        const json = await hourRes.value.json();
-        setHourly(Array.isArray(json.data) ? json.data : []);
-      }
-      if (alertRes.status === 'fulfilled' && alertRes.value.ok) {
-        const json = await alertRes.value.json();
-        setAlerts(Array.isArray(json.data) ? json.data : []);
-      }
-    } catch {
-      // silently handle
-    } finally {
-      setLoading(false);
-    }
+      if (sumRes.status === 'fulfilled' && sumRes.value.ok) { const j = await sumRes.value.json(); setSummary(j.data ?? j); }
+      if (catRes.status === 'fulfilled' && catRes.value.ok) { const j = await catRes.value.json(); setCategories(Array.isArray(j.data) ? j.data : []); }
+      if (matRes.status === 'fulfilled' && matRes.value.ok) { const j = await matRes.value.json(); setMatrix(Array.isArray(j.data) ? j.data : []); }
+      if (hourRes.status === 'fulfilled' && hourRes.value.ok) { const j = await hourRes.value.json(); setHourly(Array.isArray(j.data) ? j.data : []); }
+      if (alertRes.status === 'fulfilled' && alertRes.value.ok) { const j = await alertRes.value.json(); setAlerts(Array.isArray(j.data) ? j.data : []); }
+    } catch { /* */ } finally { setLoading(false); }
   }, []);
 
   const handleDateChange = useCallback((range: DateRange) => {
@@ -81,97 +83,138 @@ export default function DashboardPage() {
     fetchData(range, activeSource, activeChannel);
   }, [fetchData, activeSource, activeChannel]);
 
-  const handleSourceChange = (source: string) => {
-    setActiveSource(source);
-    if (dateRange) fetchData(dateRange, source, activeChannel);
-  };
-
-  const handleChannelChange = (channel: string) => {
-    setActiveChannel(channel);
-    if (dateRange) fetchData(dateRange, activeSource, channel);
-  };
-
+  const handleSourceChange = (s: string) => { setActiveSource(s); if (dateRange) fetchData(dateRange, s, activeChannel); };
+  const handleChannelChange = (c: string) => { setActiveChannel(c); if (dateRange) fetchData(dateRange, activeSource, c); };
   const handleSync = async () => {
     setSyncing(true);
-    try {
-      const res = await fetch('/api/pipeline', { method: 'POST' });
-      const json = await res.json();
-      if (json.success && dateRange) {
-        fetchData(dateRange, activeSource, activeChannel);
-      }
-    } catch {
-      // ignore
-    } finally {
-      setSyncing(false);
-    }
+    try { const r = await fetch('/api/pipeline', { method: 'POST' }); const j = await r.json(); if (j.success && dateRange) fetchData(dateRange, activeSource, activeChannel); }
+    catch {} finally { setSyncing(false); }
   };
 
-  const allButtons = [
-    { key: 'ALL', name: '全社比較' },
-    ...sources,
-  ];
+  const s = summary ?? {};
 
   return (
     <DashboardLayout>
       <div className="space-y-4">
         <AlertBanner alerts={alerts} />
 
-        {/* 会社切り替えボタン + 同期ボタン */}
+        {/* ヘッダー: 会社 + チャネル + 同期 */}
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex gap-1 flex-wrap">
-            {allButtons.map((btn) => (
-              <button
-                key={btn.key}
-                onClick={() => handleSourceChange(btn.key)}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md border transition-all ${
-                  activeSource === btn.key
-                    ? 'bg-blue-600 text-white border-blue-600 shadow'
-                    : 'bg-white text-gray-600 border-gray-200 hover:bg-blue-50 hover:border-blue-300'
-                }`}
-              >
+            {[{ key: 'ALL', name: '全社比較' }, ...sources].map(btn => (
+              <button key={btn.key} onClick={() => handleSourceChange(btn.key)}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md border ${activeSource === btn.key ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-blue-50'}`}>
                 {btn.name}
               </button>
             ))}
           </div>
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            className="px-3 py-1.5 text-xs font-semibold rounded-md bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 transition-all"
-          >
-            {syncing ? '同期中...' : '🔄 Zendesk同期'}
-          </button>
-        </div>
-
-        {/* チャネルフィルタ */}
-        <div className="flex gap-1">
-          {[
-            { key: 'all', label: '全て' },
-            { key: 'ticket', label: '📧 チケットのみ' },
-            { key: 'call_center', label: '📞 コールセンター' },
-          ].map((ch) => (
-            <button
-              key={ch.key}
-              onClick={() => handleChannelChange(ch.key)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md border transition-all ${
-                activeChannel === ch.key
-                  ? 'bg-purple-600 text-white border-purple-600'
-                  : 'bg-white text-gray-600 border-gray-200 hover:bg-purple-50 hover:border-purple-300'
-              }`}
-            >
-              {ch.label}
+          <div className="flex gap-1">
+            {[{ key: 'all', label: '全て' }, { key: 'ticket', label: '📧 チケット' }, { key: 'call_center', label: '📞 CC' }].map(ch => (
+              <button key={ch.key} onClick={() => handleChannelChange(ch.key)}
+                className={`px-2 py-1 text-[11px] font-medium rounded-md border ${activeChannel === ch.key ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-500 border-gray-200'}`}>
+                {ch.label}
+              </button>
+            ))}
+            <button onClick={handleSync} disabled={syncing}
+              className="px-3 py-1 text-[11px] font-semibold rounded-md bg-green-600 text-white hover:bg-green-700 disabled:opacity-50">
+              {syncing ? '同期中...' : '🔄 同期'}
             </button>
-          ))}
+          </div>
         </div>
 
         <DateRangeFilter onChange={handleDateChange} />
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <DailySummaryCard data={summary} loading={loading} />
-          <div className="lg:col-span-2">
-            <CategoryBreakdown data={categories} loading={loading} />
-          </div>
+        {/* ===== KPIカード 4枚 ===== */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <KpiCard
+            label="今日"
+            value={s.todayCount ?? 0}
+            diff={s.dayOverDayDiff}
+            rate={s.dayOverDayRate}
+            sub={`昨日: ${s.previousDayCount ?? 0}件`}
+          />
+          <KpiCard
+            label="直近7日合計"
+            value={s.last7DaysCount ?? 0}
+            sub={`7日平均: ${s.avg7Days ?? 0}件/日`}
+          />
+          <KpiCard
+            label="今週"
+            value={s.thisWeekCount ?? 0}
+            diff={s.weekOverWeekDiff}
+            rate={s.weekOverWeekRate}
+            sub={`先週同期間: ${s.lastWeekCount ?? 0}件`}
+          />
+          <KpiCard
+            label="今月"
+            value={s.thisMonthCount ?? 0}
+            diff={s.monthOverMonthDiff}
+            rate={s.monthOverMonthRate}
+            sub={`先月同期間: ${s.lastMonthCount ?? 0}件`}
+          />
         </div>
 
+        {/* ===== 比較サマリーテーブル ===== */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <h3 className="text-xs font-semibold text-gray-500 uppercase mb-3">比較サマリー</h3>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-xs text-gray-500">
+                <th className="py-2">指標</th>
+                <th className="py-2 text-right">件数</th>
+                <th className="py-2 text-right">比較対象</th>
+                <th className="py-2 text-right">差分</th>
+                <th className="py-2 text-right">増減率</th>
+              </tr>
+            </thead>
+            <tbody className="text-gray-800">
+              <tr className="border-b border-gray-100">
+                <td className="py-2 font-medium">今日 vs 昨日</td>
+                <td className="py-2 text-right">{s.todayCount ?? 0}</td>
+                <td className="py-2 text-right text-gray-500">{s.previousDayCount ?? 0}</td>
+                <td className={`py-2 text-right font-medium ${(s.dayOverDayDiff ?? 0) > 0 ? 'text-red-600' : (s.dayOverDayDiff ?? 0) < 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                  {(s.dayOverDayDiff ?? 0) >= 0 ? '+' : ''}{s.dayOverDayDiff ?? 0}
+                </td>
+                <td className={`py-2 text-right ${(s.dayOverDayRate ?? 0) > 0 ? 'text-red-600' : (s.dayOverDayRate ?? 0) < 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                  {(s.dayOverDayRate ?? 0) >= 0 ? '+' : ''}{s.dayOverDayRate ?? 0}%
+                </td>
+              </tr>
+              <tr className="border-b border-gray-100">
+                <td className="py-2 font-medium">今週 vs 先週</td>
+                <td className="py-2 text-right">{s.thisWeekCount ?? 0}</td>
+                <td className="py-2 text-right text-gray-500">{s.lastWeekCount ?? 0}</td>
+                <td className={`py-2 text-right font-medium ${(s.weekOverWeekDiff ?? 0) > 0 ? 'text-red-600' : (s.weekOverWeekDiff ?? 0) < 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                  {(s.weekOverWeekDiff ?? 0) >= 0 ? '+' : ''}{s.weekOverWeekDiff ?? 0}
+                </td>
+                <td className={`py-2 text-right ${(s.weekOverWeekRate ?? 0) > 0 ? 'text-red-600' : (s.weekOverWeekRate ?? 0) < 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                  {(s.weekOverWeekRate ?? 0) >= 0 ? '+' : ''}{s.weekOverWeekRate ?? 0}%
+                </td>
+              </tr>
+              <tr className="border-b border-gray-100">
+                <td className="py-2 font-medium">今月 vs 先月</td>
+                <td className="py-2 text-right">{s.thisMonthCount ?? 0}</td>
+                <td className="py-2 text-right text-gray-500">{s.lastMonthCount ?? 0}</td>
+                <td className={`py-2 text-right font-medium ${(s.monthOverMonthDiff ?? 0) > 0 ? 'text-red-600' : (s.monthOverMonthDiff ?? 0) < 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                  {(s.monthOverMonthDiff ?? 0) >= 0 ? '+' : ''}{s.monthOverMonthDiff ?? 0}
+                </td>
+                <td className={`py-2 text-right ${(s.monthOverMonthRate ?? 0) > 0 ? 'text-red-600' : (s.monthOverMonthRate ?? 0) < 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                  {(s.monthOverMonthRate ?? 0) >= 0 ? '+' : ''}{s.monthOverMonthRate ?? 0}%
+                </td>
+              </tr>
+              <tr>
+                <td className="py-2 font-medium">30日平均</td>
+                <td className="py-2 text-right">{s.avg30Days ?? 0} 件/日</td>
+                <td className="py-2 text-right text-gray-500">7日平均: {s.avg7Days ?? 0}</td>
+                <td className="py-2" colSpan={2}></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* ===== カテゴリ別ランキング ===== */}
+        <CategoryBreakdown data={categories} loading={loading} />
+
+        {/* ===== 日別マトリクス + 時間帯 ===== */}
         <MatrixTable data={matrix} loading={loading} />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

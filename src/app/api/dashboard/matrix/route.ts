@@ -19,18 +19,8 @@ export async function GET(request: NextRequest) {
     // ただし動的集計のフォールバックも用意
     const range = jstDateRange(startDate, endDate);
 
-    // CategoryAggregation テーブルから取得
-    const sourceWhere = source !== 'ALL' ? { sourceKey: source } : {};
-    const rows = await prisma.categoryAggregation.findMany({
-      where: {
-        ...sourceWhere,
-        aggregationDate: { gte: range.gte, lt: range.lt },
-      },
-      orderBy: { aggregationDate: 'asc' },
-    });
-
-    // 事前集計テーブルにデータがない場合、直接Ticketテーブルから動的集計
-    if (rows.length === 0) {
+    // CategoryAggregation テーブルは使わず、常にTicketテーブルから動的集計
+    if (true) {
       const baseWhere = await buildBaseWhere(source, channel, range);
       const tickets = await prisma.ticket.findMany({
         where: baseWhere as any,
@@ -49,18 +39,36 @@ export async function GET(request: NextRequest) {
         catMap.set(t.inquiryCategory, (catMap.get(t.inquiryCategory) ?? 0) + 1);
       }
 
-      const data = [...byDate.entries()].map(([dateStr, catMap]) => {
+      // 選択期間内の全日分の行を生成（データがない日も0件で表示）
+      const allDates: string[] = [];
+      const cur = new Date(startDate + 'T00:00:00+09:00');
+      const endD = new Date(endDate + 'T00:00:00+09:00');
+      while (cur <= endD) {
+        const y = cur.getFullYear();
+        const m = String(cur.getMonth() + 1).padStart(2, '0');
+        const d = String(cur.getDate()).padStart(2, '0');
+        allDates.push(`${y}-${m}-${d}`);
+        cur.setDate(cur.getDate() + 1);
+      }
+
+      const data = allDates.map((dateStr, idx) => {
+        const catMap = byDate.get(dateStr) ?? new Map<string, number>();
+        const prevCatMap = idx > 0 ? (byDate.get(allDates[idx - 1]) ?? new Map<string, number>()) : new Map<string, number>();
         const totalCount = Array.from(catMap.values()).reduce((s, c) => s + c, 0);
         const categories: Record<string, { count: number; percentage: number; diff: number }> = {};
-        for (const [cat, count] of catMap.entries()) {
+        // 全カテゴリを収集
+        const allCats = new Set([...catMap.keys(), ...prevCatMap.keys()]);
+        for (const cat of allCats) {
+          const count = catMap.get(cat) ?? 0;
+          const prevCount = prevCatMap.get(cat) ?? 0;
           categories[cat] = {
             count,
             percentage: totalCount > 0 ? Math.round((count / totalCount) * 1000) / 10 : 0,
-            diff: 0,
+            diff: count - prevCount,
           };
         }
         return { date: new Date(dateStr), totalCount, categories };
-      });
+      }).reverse(); // 新しい日が上
 
       return NextResponse.json({ success: true, data });
     }
