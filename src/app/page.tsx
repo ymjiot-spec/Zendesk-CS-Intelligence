@@ -41,6 +41,7 @@ export default function DashboardPage() {
   const [hourly, setHourly] = useState<HourlyData[]>([]);
   const [heatmap, setHeatmap] = useState<HeatmapData | null>(null);
   const [alerts, setAlerts] = useState<AlertFiringRecord[]>([]);
+  const [complaints, setComplaints] = useState<any[]>([]);
   const [sources, setSources] = useState<SourceConfig[]>([]);
   const [activeSource, setActiveSource] = useState<string>('ALL');
   const [activeChannel, setActiveChannel] = useState<string>('all');
@@ -63,18 +64,20 @@ export default function DashboardPage() {
       const matStart = `${matStartDate.getFullYear()}-${String(matStartDate.getMonth()+1).padStart(2,'0')}-${String(matStartDate.getDate()).padStart(2,'0')}`;
       const matParams = new URLSearchParams({ startDate: matStart, endDate: matEnd, source, channel });
 
-      const [sumRes, catRes, matRes, hourRes, alertRes] = await Promise.allSettled([
+      const [sumRes, catRes, matRes, hourRes, alertRes, compRes] = await Promise.allSettled([
         fetch(`/api/dashboard/summary?${params}`),
         fetch(`/api/dashboard/categories?${params}`),
         fetch(`/api/dashboard/matrix?${matParams}`),
         fetch(`/api/dashboard/hourly?${params}`),
         fetch(`/api/alerts/history?status=unresolved`),
+        fetch(`/api/dashboard/complaints?${params}`),
       ]);
       if (sumRes.status === 'fulfilled' && sumRes.value.ok) { const j = await sumRes.value.json(); setSummary(j.data ?? j); }
       if (catRes.status === 'fulfilled' && catRes.value.ok) { const j = await catRes.value.json(); setCategories(Array.isArray(j.data) ? j.data : []); }
       if (matRes.status === 'fulfilled' && matRes.value.ok) { const j = await matRes.value.json(); setMatrix(Array.isArray(j.data) ? j.data : []); }
       if (hourRes.status === 'fulfilled' && hourRes.value.ok) { const j = await hourRes.value.json(); setHourly(Array.isArray(j.data) ? j.data : []); }
       if (alertRes.status === 'fulfilled' && alertRes.value.ok) { const j = await alertRes.value.json(); setAlerts(Array.isArray(j.data) ? j.data : []); }
+      if (compRes.status === 'fulfilled' && compRes.value.ok) { const j = await compRes.value.json(); setComplaints(Array.isArray(j.data) ? j.data : []); }
     } catch { /* */ } finally { setLoading(false); }
   }, []);
 
@@ -153,6 +156,35 @@ export default function DashboardPage() {
             sub={`先月同期間: ${s.lastMonthCount ?? 0}件`}
           />
         </div>
+
+        {/* ===== クレーム速報 ===== */}
+        {complaints.length > 0 && (
+          <div className="bg-red-50 rounded-xl border border-red-200 p-4">
+            <h3 className="text-xs font-semibold text-red-600 uppercase mb-3">🚨 クレーム速報 ({complaints.length}件)</h3>
+            <div className="space-y-2">
+              {complaints.map((c: any) => (
+                <div key={c.ticketId} className="flex items-center justify-between bg-white rounded-lg border border-red-100 p-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="px-2 py-0.5 text-[10px] font-bold bg-red-600 text-white rounded">{c.company}</span>
+                      <span className="text-[10px] px-2 py-0.5 bg-red-100 text-red-700 rounded">{c.status}</span>
+                      <span className="text-[10px] text-gray-400">#{c.ticketId}</span>
+                    </div>
+                    <div className="text-sm text-gray-800 truncate">{c.subject || '(件名なし)'}</div>
+                    <div className="text-[10px] text-gray-400 mt-0.5">
+                      {c.category && <span className="mr-2">{c.category}</span>}
+                      {new Date(c.createdAt).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' })}
+                    </div>
+                  </div>
+                  <a href={c.zendeskUrl} target="_blank" rel="noopener noreferrer"
+                    className="ml-3 px-3 py-1.5 text-[11px] font-medium bg-red-600 text-white rounded-md hover:bg-red-700 whitespace-nowrap">
+                    Zendeskで開く
+                  </a>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ===== 比較サマリーテーブル ===== */}
         <div className="bg-white rounded-xl border border-gray-200 p-4">

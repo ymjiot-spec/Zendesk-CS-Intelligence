@@ -1,50 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { ApiResponse } from '@/types/api';
-import type { AnomalyEvent } from '@/types/anomaly';
+import prisma from '@/lib/prisma';
+import { jstDateRange } from '@/lib/date-jst';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl;
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
-    const preset = searchParams.get('preset');
-    const severity = searchParams.get('severity');
-    const type = searchParams.get('type');
 
-    if (!startDate && !endDate && !preset) {
-      return NextResponse.json<ApiResponse<null>>(
-        {
-          success: false,
-          data: null,
-          meta: { lastUpdatedAt: new Date().toISOString(), populationInfo: { totalCount: 0, excludedCount: 0 } },
-          error: { code: 'INVALID_PARAMS', message: 'startDate/endDate or preset is required' },
-        },
-        { status: 400 }
-      );
+    const where: any = {};
+    if (startDate && endDate) {
+      const range = jstDateRange(startDate, endDate);
+      where.detectedAt = { gte: range.gte, lt: range.lt };
     }
 
-    void severity;
-    void type;
-
-    const data: AnomalyEvent[] = [];
-
-    return NextResponse.json<ApiResponse<AnomalyEvent[]>>({
-      success: true,
-      data,
-      meta: {
-        lastUpdatedAt: new Date().toISOString(),
-        populationInfo: { totalCount: 0, excludedCount: 0 },
-      },
+    const rows = await prisma.anomalyEvent.findMany({
+      where,
+      orderBy: { detectedAt: 'desc' },
+      take: 100,
     });
+
+    const data = rows.map(r => ({
+      id: r.id,
+      detectedAt: r.detectedAt,
+      type: r.detectionType as 'threshold' | 'trend',
+      metric: r.metric,
+      currentValue: r.currentValue,
+      thresholdOrBaseline: r.baselineValue,
+      deviation: r.deviation,
+      severity: r.severity as 'warning' | 'critical',
+    }));
+
+    return NextResponse.json({ success: true, data });
   } catch (error) {
-    return NextResponse.json<ApiResponse<null>>(
-      {
-        success: false,
-        data: null,
-        meta: { lastUpdatedAt: new Date().toISOString(), populationInfo: { totalCount: 0, excludedCount: 0 } },
-        error: { code: 'INTERNAL_ERROR', message: error instanceof Error ? error.message : 'Unknown error' },
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, data: [], error: error instanceof Error ? error.message : 'error' }, { status: 500 });
   }
 }

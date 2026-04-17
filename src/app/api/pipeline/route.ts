@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getZendeskSources } from '@/lib/zendesk/config';
 import { fetchAndSaveTickets } from '@/lib/zendesk/fetchTickets';
 import { runAggregation } from '@/lib/zendesk/aggregate';
+import { runAnomalyDetection } from '@/lib/anomaly/run-detection';
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,6 +28,16 @@ export async function POST(request: NextRequest) {
 
     // 全社合算の集計
     await runAggregation('ALL');
+
+    // 異常検知を実行
+    try {
+      await runAnomalyDetection('ALL', 'all');
+      for (const source of sources) {
+        await runAnomalyDetection(source.key, 'all');
+      }
+    } catch (err) {
+      console.error('Anomaly detection failed:', err);
+    }
 
     return NextResponse.json({ success: true, data: results });
   } catch (error) {

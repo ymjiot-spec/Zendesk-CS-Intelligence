@@ -21,7 +21,7 @@ export interface DetectInput {
  */
 export const DEFAULT_ANOMALY_CONFIG: AnomalyDetectorConfig = {
   thresholds: {
-    total: 100,
+    total: 50,
     byCategory: {},
   },
   trendConfig: {
