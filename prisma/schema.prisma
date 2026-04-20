@@ -76,16 +76,19 @@ model HourlyAggregation {
 }
 
 model AnomalyEvent {
-  id              String   @id @default(uuid()) @db.Uuid
-  detectedAt      DateTime @map("detected_at") @db.Timestamptz()
-  detectionType   String   @map("detection_type") @db.VarChar(50)
-  metric          String   @db.VarChar(255)
-  currentValue    Float    @map("current_value")
-  baselineValue   Float    @map("baseline_value")
-  deviation       Float
-  severity        String   @db.VarChar(50)
-  isAcknowledged  Boolean  @default(false) @map("is_acknowledged")
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  id                      String   @id @default(uuid()) @db.Uuid
+  detectedAt              DateTime @map("detected_at") @db.Timestamptz()
+  detectionType           String   @map("detection_type") @db.VarChar(50)
+  metric                  String   @db.VarChar(255)
+  currentValue            Float    @map("current_value")
+  baselineValue           Float    @map("baseline_value")
+  deviation               Float
+  severity                String   @db.VarChar(50)
+  isAcknowledged          Boolean  @default(false) @map("is_acknowledged")
+  sourceKey               String?  @map("source_key") @db.VarChar(50)
+  representativeTickets   Json?    @map("representative_tickets") @db.JsonB
+  categoryBreakdown       Json?    @map("category_breakdown") @db.JsonB
+  createdAt               DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
   aiAnalysis        AiAnalysis?
   notificationLogs  NotificationLog[]

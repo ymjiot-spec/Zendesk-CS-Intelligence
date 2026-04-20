@@ -58,6 +58,27 @@ async function getCategoryDailyCounts(
   return result;
 }
 
+/** 代表チケットを取得（当日の最新5件） */
+async function getRepresentativeTickets(
+  source: string,
+  channel: string,
+  dateStr: string,
+): Promise<{ ticketId: string; subject: string; sourceKey: string }[]> {
+  const range = jstDateRange(dateStr, dateStr);
+  const where = await buildBaseWhere(source, channel, range);
+  const tickets = await prisma.ticket.findMany({
+    where: where as any,
+    orderBy: { createdAt: 'desc' },
+    take: 5,
+    select: { zendeskTicketId: true, subject: true, sourceKey: true },
+  });
+  return tickets.map(t => ({
+    ticketId: t.zendeskTicketId,
+    subject: t.subject,
+    sourceKey: t.sourceKey,
+  }));
+}
+
 /** 異常検知を実行してDBに保存 */
 export async function runAnomalyDetection(
   source: string = 'ALL',
@@ -107,6 +128,12 @@ export async function runAnomalyDetection(
     new Date(),
   );
 
+  // 代表チケットとカテゴリ内訳を取得
+  const repTickets = await getRepresentativeTickets(source, channel, today);
+  const categoryBreakdown = Object.entries(todayCounts)
+    .sort(([, a], [, b]) => b - a)
+    .map(([category, count]) => ({ category, count }));
+
   // DBに保存
   for (const event of events) {
     await prisma.anomalyEvent.create({
@@ -118,6 +145,9 @@ export async function runAnomalyDetection(
         baselineValue: event.thresholdOrBaseline,
         deviation: event.deviation,
         severity: event.severity,
+        sourceKey: source,
+        representativeTickets: repTickets,
+        categoryBreakdown: categoryBreakdown,
       },
     });
   }
