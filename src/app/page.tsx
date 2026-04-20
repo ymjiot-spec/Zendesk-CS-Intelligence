@@ -96,6 +96,16 @@ export default function DashboardPage() {
 
   const s = summary ?? {};
 
+  // 会社別カラー
+  const COMPANY_COLORS: Record<string, { bg: string; border: string; text: string; badge: string }> = {
+    ALL: { bg: 'bg-blue-600', border: 'border-blue-600', text: 'text-white', badge: 'bg-blue-600' },
+    starservicesupport: { bg: 'bg-orange-500', border: 'border-orange-500', text: 'text-white', badge: 'bg-orange-500' },
+    dmobilehelp: { bg: 'bg-pink-500', border: 'border-pink-500', text: 'text-white', badge: 'bg-pink-500' },
+    jcnhelp: { bg: 'bg-indigo-800', border: 'border-indigo-800', text: 'text-white', badge: 'bg-indigo-800' },
+    mpcahelp: { bg: 'bg-emerald-600', border: 'border-emerald-600', text: 'text-white', badge: 'bg-emerald-600' },
+  };
+  const COMPANY_NAME_TO_KEY: Record<string, string> = { STAR: 'starservicesupport', JTBC: 'dmobilehelp', JCN: 'jcnhelp', MPCA: 'mpcahelp' };
+
   return (
     <DashboardLayout>
       <div className="space-y-4">
@@ -104,12 +114,15 @@ export default function DashboardPage() {
         {/* ヘッダー: 会社 + チャネル + 同期 */}
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex gap-1 flex-wrap">
-            {[{ key: 'ALL', name: '全社比較' }, ...sources].map(btn => (
+            {[{ key: 'ALL', name: '全社比較' }, ...sources].map(btn => {
+              const colors = COMPANY_COLORS[btn.key] ?? COMPANY_COLORS.ALL;
+              return (
               <button key={btn.key} onClick={() => handleSourceChange(btn.key)}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md border ${activeSource === btn.key ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-blue-50'}`}>
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md border ${activeSource === btn.key ? `${colors.bg} ${colors.text} ${colors.border}` : 'bg-white text-gray-600 border-gray-200 hover:opacity-80'}`}>
                 {btn.name}
               </button>
-            ))}
+              );
+            })}
           </div>
           <div className="flex gap-1">
             {[{ key: 'all', label: '全て' }, { key: 'ticket', label: '📧 チケット' }, { key: 'call_center', label: '📞 CC' }].map(ch => (
@@ -166,7 +179,7 @@ export default function DashboardPage() {
                 <div key={c.ticketId} className="flex items-center justify-between bg-white rounded-lg border border-red-100 p-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="px-2 py-0.5 text-[10px] font-bold bg-red-600 text-white rounded">{c.company}</span>
+                      <span className={`px-2 py-0.5 text-[10px] font-bold text-white rounded ${(COMPANY_COLORS[COMPANY_NAME_TO_KEY[c.company] ?? ''] ?? COMPANY_COLORS.ALL).badge}`}>{c.company}</span>
                       <span className="text-[10px] px-2 py-0.5 bg-red-100 text-red-700 rounded">{c.status}</span>
                       <span className="text-[10px] text-gray-400">#{c.ticketId}</span>
                     </div>
