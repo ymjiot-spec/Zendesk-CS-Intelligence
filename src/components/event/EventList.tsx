@@ -133,7 +133,11 @@ export default function EventList({ events, loading, onEdit, onDelete }: EventLi
                   </button>
                 )}
                 {onDelete && (
-                  <button onClick={() => onDelete(event.id)} className="px-2 py-1 text-xs text-red-500 hover:bg-red-50 rounded">
+                  <button onClick={() => {
+                    if (window.confirm(`「${event.name}」を削除しますか？`)) {
+                      onDelete(event.id);
+                    }
+                  }} className="px-2 py-1 text-xs text-red-500 hover:bg-red-50 rounded">
                     削除
                   </button>
                 )}
