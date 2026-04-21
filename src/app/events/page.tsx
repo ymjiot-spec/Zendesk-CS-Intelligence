@@ -1,24 +1,27 @@
 'use client';
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import DateRangeFilter, { type DateRange } from '@/components/filters/DateRangeFilter';
 import {
   EventForm, EventList, EventDetail, PredictionBanner,
   TabNavigation, CompanyTimeline, CorrelationChart, ImpactAnalysisPanel,
 } from '@/components/event';
-import { COMPANY_LIST, ALL_COLOR, getCompanyColor } from '@/lib/company-colors';
+import { COMPANY_LIST, getCompanyColor } from '@/lib/company-colors';
+import type { CompanyCorrelationData } from '@/components/event/CorrelationChart';
 import type { TabId } from '@/components/event/TabNavigation';
 import type { EventFormData } from '@/components/event/EventForm';
 import type { EventLog } from '@/types/event';
 import type { TimelineEvent, CorrelationDataPoint, ImpactAnalysisData } from '@/types/timeline';
 import type { ImpactScoreResult, OverlapAnalysisResult, ImpactPrediction } from '@/types/ai';
 
+const ALL_KEYS = COMPANY_LIST.map((c) => c.key);
+
 export default function EventsPage() {
-  // Shared state
   const [activeTab, setActiveTab] = useState<TabId>('timeline');
   const [currentRange, setCurrentRange] = useState<DateRange | null>(null);
-  const [activeSource, setActiveSource] = useState<string>('ALL');
+  // Multi-select: Set of selected sourceKeys. Empty = all selected.
+  const [selectedSources, setSelectedSources] = useState<Set<string>>(new Set(ALL_KEYS));
 
   // List tab state
   const [loading, setLoading] = useState(true);
@@ -35,33 +38,45 @@ export default function EventsPage() {
   // Timeline state
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
   const [allCompanyEvents, setAllCompanyEvents] = useState<TimelineEvent[]>([]);
-  const [correlationData, setCorrelationData] = useState<CorrelationDataPoint[]>([]);
+  const [multiCorrelation, setMultiCorrelation] = useState<CompanyCorrelationData[]>([]);
   const [analysisData, setAnalysisData] = useState<ImpactAnalysisData | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
 
+  const isAllSelected = selectedSources.size === ALL_KEYS.length;
+
+  // Toggle company selection
+  const toggleSource = (key: string) => {
+    setSelectedSources((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+        if (next.size === 0) return new Set(ALL_KEYS); // at least one must be selected
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const selectAll = () => setSelectedSources(new Set(ALL_KEYS));
+
   // Fetch events list
-  const fetchEvents = useCallback(async (range: DateRange, source: string) => {
+  const fetchEvents = useCallback(async (range: DateRange) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ startDate: range.startDate, endDate: range.endDate });
       const res = await fetch(`/api/events?${params}`);
       if (res.ok) {
         const json = await res.json();
-        let list = json.data ?? json;
-        // Client-side filter by sourceKey
-        if (source && source !== 'ALL') {
-          list = list.filter((e: any) => e.sourceKey === source || e.sourceKey === null || e.sourceKey === 'ALL');
-        }
-        setEvents(list);
+        setEvents(json.data ?? json);
       }
     } catch { /* */ } finally { setLoading(false); }
   }, []);
 
   // Fetch timeline data
-  const fetchTimeline = useCallback(async (range: DateRange, source: string) => {
+  const fetchTimeline = useCallback(async (range: DateRange) => {
     try {
       const params = new URLSearchParams({ startDate: range.startDate, endDate: range.endDate });
-      if (source && source !== 'ALL') params.set('sourceKey', source);
       const res = await fetch(`/api/events/timeline?${params}`);
       if (res.ok) {
         const json = await res.json();
@@ -73,39 +88,62 @@ export default function EventsPage() {
     } catch { /* */ }
   }, []);
 
-  // Fetch correlation data
-  const fetchCorrelation = useCallback(async (range: DateRange, source: string) => {
+  // Fetch correlation data for selected companies (parallel)
+  const fetchCorrelation = useCallback(async (range: DateRange, sources: Set<string>) => {
     try {
-      const params = new URLSearchParams({ startDate: range.startDate, endDate: range.endDate });
-      if (source && source !== 'ALL') params.set('sourceKey', source);
-      const res = await fetch(`/api/events/timeline/correlation?${params}`);
-      if (res.ok) {
-        const json = await res.json();
-        setCorrelationData(json.data?.daily ?? []);
-      }
+      const keys = Array.from(sources);
+      const results = await Promise.all(
+        keys.map(async (key) => {
+          const params = new URLSearchParams({ startDate: range.startDate, endDate: range.endDate, sourceKey: key });
+          const res = await fetch(`/api/events/timeline/correlation?${params}`);
+          if (res.ok) {
+            const json = await res.json();
+            const company = COMPANY_LIST.find((c) => c.key === key);
+            return {
+              sourceKey: key,
+              companyName: company?.name ?? key,
+              daily: json.data?.daily ?? [],
+            } as CompanyCorrelationData;
+          }
+          return null;
+        })
+      );
+      setMultiCorrelation(results.filter(Boolean) as CompanyCorrelationData[]);
     } catch { /* */ }
   }, []);
 
   // Fetch all data
-  const fetchAll = useCallback((range: DateRange, source: string) => {
-    fetchEvents(range, source);
-    fetchTimeline(range, source);
-    fetchCorrelation(range, source);
+  const fetchAll = useCallback((range: DateRange, sources: Set<string>) => {
+    fetchEvents(range);
+    fetchTimeline(range);
+    fetchCorrelation(range, sources);
   }, [fetchEvents, fetchTimeline, fetchCorrelation]);
 
   // Handle date range change
   const handleDateChange = useCallback((range: DateRange) => {
     setCurrentRange(range);
-    fetchAll(range, activeSource);
-  }, [fetchAll, activeSource]);
+    fetchAll(range, selectedSources);
+  }, [fetchAll, selectedSources]);
 
-  // Handle company filter change
-  const handleSourceChange = (source: string) => {
-    setActiveSource(source);
-    if (currentRange) fetchAll(currentRange, source);
+  // Re-fetch correlation when sources change
+  const handleSourceToggle = (key: string) => {
+    let nextSources: Set<string>;
+    if (key === 'ALL') {
+      nextSources = new Set(ALL_KEYS);
+    } else {
+      nextSources = new Set(selectedSources);
+      if (nextSources.has(key)) {
+        nextSources.delete(key);
+        if (nextSources.size === 0) nextSources = new Set(ALL_KEYS);
+      } else {
+        nextSources.add(key);
+      }
+    }
+    setSelectedSources(nextSources);
+    if (currentRange) fetchCorrelation(currentRange, nextSources);
   };
 
-  // Handle event click on timeline → load analysis
+  // Handle event click on timeline
   const handleTimelineEventClick = useCallback(async (event: TimelineEvent) => {
     setAnalysisLoading(true);
     setAnalysisData(null);
@@ -132,7 +170,7 @@ export default function EventsPage() {
       if (res.ok) {
         setShowForm(false);
         setEditingEvent(null);
-        if (currentRange) fetchAll(currentRange, activeSource);
+        if (currentRange) fetchAll(currentRange, selectedSources);
       }
     } catch { /* */ } finally { setFormLoading(false); }
   };
@@ -147,8 +185,8 @@ export default function EventsPage() {
     await fetch(`/api/events/${eventId}`, { method: 'DELETE' });
     setEvents((prev) => prev.filter((e) => e.id !== eventId));
     if (currentRange) {
-      fetchTimeline(currentRange, activeSource);
-      fetchCorrelation(currentRange, activeSource);
+      fetchTimeline(currentRange);
+      fetchCorrelation(currentRange, selectedSources);
     }
   };
 
@@ -161,31 +199,16 @@ export default function EventsPage() {
         fetch(`/api/events/overlap?eventId=${event.id}`),
         fetch(`/api/events/${event.id}/prediction`),
       ]);
-      if (impactRes.status === 'fulfilled' && impactRes.value.ok) {
-        const json = await impactRes.value.json();
-        setImpact(json.data ?? json);
-      }
-      if (overlapRes.status === 'fulfilled' && overlapRes.value.ok) {
-        const json = await overlapRes.value.json();
-        setOverlap(json.data ?? json);
-      }
-      if (predRes.status === 'fulfilled' && predRes.value.ok) {
-        const json = await predRes.value.json();
-        setPrediction(json.data ?? json);
-      }
+      if (impactRes.status === 'fulfilled' && impactRes.value.ok) { setImpact((await impactRes.value.json()).data ?? null); }
+      if (overlapRes.status === 'fulfilled' && overlapRes.value.ok) { setOverlap((await overlapRes.value.json()).data ?? null); }
+      if (predRes.status === 'fulfilled' && predRes.value.ok) { setPrediction((await predRes.value.json()).data ?? null); }
     } catch { /* */ } finally { setDetailLoading(false); }
   };
-
-  // Company color helper
-  const sourceButtons = [
-    { key: 'ALL', name: '全社' },
-    ...COMPANY_LIST.map((c) => ({ key: c.key, name: c.name })),
-  ];
 
   return (
     <DashboardLayout>
       <div className="space-y-4">
-        {/* Header row: date filter + register button */}
+        {/* Header */}
         <div className="flex items-center justify-between">
           <DateRangeFilter onChange={handleDateChange} />
           <button
@@ -196,25 +219,38 @@ export default function EventsPage() {
           </button>
         </div>
 
-        {/* Company filter buttons */}
+        {/* Company multi-select buttons */}
         <div className="flex items-center gap-1 flex-wrap">
-          {sourceButtons.map((btn) => {
-            const color = getCompanyColor(btn.key === 'ALL' ? null : btn.key);
-            const isActive = activeSource === btn.key;
+          <button
+            onClick={() => handleSourceToggle('ALL')}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-md border transition-colors ${
+              isAllSelected
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            全社
+          </button>
+          {COMPANY_LIST.map((c) => {
+            const color = getCompanyColor(c.key);
+            const isActive = selectedSources.has(c.key);
             return (
               <button
-                key={btn.key}
-                onClick={() => handleSourceChange(btn.key)}
+                key={c.key}
+                onClick={() => handleSourceToggle(c.key)}
                 className={`px-3 py-1.5 text-xs font-semibold rounded-md border transition-colors ${
                   isActive
                     ? `${color.tailwind.bg} ${color.tailwind.text} ${color.tailwind.border}`
-                    : 'bg-white text-gray-600 border-gray-200 hover:opacity-80'
+                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
                 }`}
               >
-                {btn.name}
+                {c.name}
               </button>
             );
           })}
+          <span className="text-[10px] text-gray-400 ml-2">
+            {isAllSelected ? '全社表示' : `${selectedSources.size}社選択中`}
+          </span>
         </div>
 
         {/* Tabs */}
@@ -230,13 +266,9 @@ export default function EventsPage() {
               endDate={currentRange?.endDate ?? ''}
               onEventClick={handleTimelineEventClick}
             />
-            <CorrelationChart data={correlationData} mini />
+            <CorrelationChart multiData={multiCorrelation} mini />
             {analysisData && (
-              <ImpactAnalysisPanel
-                data={analysisData}
-                loading={analysisLoading}
-                onClose={() => setAnalysisData(null)}
-              />
+              <ImpactAnalysisPanel data={analysisData} loading={analysisLoading} onClose={() => setAnalysisData(null)} />
             )}
           </div>
         )}
@@ -255,19 +287,9 @@ export default function EventsPage() {
               </>
             )}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-              <EventList
-                events={events}
-                loading={loading}
-                onEdit={handleEdit}
-                onDelete={handleDelete}
-              />
+              <EventList events={events} loading={loading} onEdit={handleEdit} onDelete={handleDelete} />
               {selectedEvent && (
-                <EventDetail
-                  event={selectedEvent}
-                  impact={impact}
-                  overlap={overlap}
-                  loading={detailLoading}
-                />
+                <EventDetail event={selectedEvent} impact={impact} overlap={overlap} loading={detailLoading} />
               )}
             </div>
           </div>
@@ -284,15 +306,11 @@ export default function EventsPage() {
             />
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <div className="lg:col-span-2">
-                <CorrelationChart data={correlationData} />
+                <CorrelationChart multiData={multiCorrelation} />
               </div>
               <div>
                 {analysisLoading || analysisData ? (
-                  <ImpactAnalysisPanel
-                    data={analysisData}
-                    loading={analysisLoading}
-                    onClose={() => setAnalysisData(null)}
-                  />
+                  <ImpactAnalysisPanel data={analysisData} loading={analysisLoading} onClose={() => setAnalysisData(null)} />
                 ) : (
                   <div className="bg-white rounded-lg border border-gray-200 p-6 text-center">
                     <p className="text-sm text-gray-400">タイムラインのイベントをクリックすると影響分析を表示します</p>
