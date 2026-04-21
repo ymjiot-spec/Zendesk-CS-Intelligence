@@ -18,8 +18,9 @@ function KpiCard({ label, value, sub, diff, rate, color }: {
 }) {
   const diffColor = (diff ?? 0) > 0 ? 'text-red-600' : (diff ?? 0) < 0 ? 'text-green-600' : 'text-gray-400';
   const arrow = (diff ?? 0) > 0 ? '↑' : (diff ?? 0) < 0 ? '↓' : '→';
+  const borderClass = color === 'red' ? 'border-red-200' : color === 'blue' ? 'border-blue-200 bg-blue-50' : 'border-gray-200';
   return (
-    <div className={`bg-white rounded-xl border p-4 ${color === 'red' ? 'border-red-200' : 'border-gray-200'}`}>
+    <div className={`bg-white rounded-xl border p-4 ${borderClass}`}>
       <div className="text-[11px] text-gray-500 mb-1">{label}</div>
       <div className="text-2xl font-bold text-gray-900">{value}<span className="text-sm font-normal text-gray-400 ml-1">件</span></div>
       {diff !== undefined && (
@@ -145,8 +146,14 @@ export default function DashboardPage() {
 
         <DateRangeFilter onChange={handleDateChange} />
 
-        {/* ===== KPIカード 4枚 ===== */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* ===== KPIカード 5枚 ===== */}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <KpiCard
+            label="📅 選択期間合計"
+            value={s.totalCount ?? 0}
+            sub={`${dateRange?.startDate ?? ''} 〜 ${dateRange?.endDate ?? ''}`}
+            color="blue"
+          />
           <KpiCard
             label="今日"
             value={s.todayCount ?? 0}
