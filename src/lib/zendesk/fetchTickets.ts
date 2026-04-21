@@ -59,13 +59,15 @@ export async function fetchAndSaveTickets(source: ZendeskSourceConfig): Promise<
       // Z始まりのチケットステータスは除外
       const isExcluded = ticketStatus.toLowerCase().startsWith('z');
 
-      // コールセンター判定（【FN】チケット対応フィールドに値があればCC）
+      // コールセンター判定（通話コードフィールドに値があればCC）
       let channelType = 'ticket';
+      let firstCommentAt: Date | null = null;
       if (source.ccFieldId) {
         const fields = t.custom_fields ?? (t as any).fields ?? [];
         const ccField = fields.find((f: any) => f.id === source.ccFieldId);
         if (ccField?.value && String(ccField.value).trim() !== '') {
           channelType = 'call_center';
+          // first_comment_atは別バッチで取得（同期時はスキップ）
         }
       }
 
@@ -82,6 +84,7 @@ export async function fetchAndSaveTickets(source: ZendeskSourceConfig): Promise<
           inquiryCategory: category,
           isExcluded: isExcluded,
           channelType: channelType,
+          firstCommentAt: firstCommentAt,
           fetchedAt: new Date(),
         },
         create: {
@@ -95,6 +98,7 @@ export async function fetchAndSaveTickets(source: ZendeskSourceConfig): Promise<
           description: t.description ?? '',
           isExcluded: isExcluded,
           channelType: channelType,
+          firstCommentAt: firstCommentAt,
           fetchedAt: new Date(),
         },
       });

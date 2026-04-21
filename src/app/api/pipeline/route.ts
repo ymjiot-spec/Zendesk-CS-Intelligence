@@ -3,6 +3,7 @@ import { getZendeskSources } from '@/lib/zendesk/config';
 import { fetchAndSaveTickets } from '@/lib/zendesk/fetchTickets';
 import { runAggregation } from '@/lib/zendesk/aggregate';
 import { runAnomalyDetection } from '@/lib/anomaly/run-detection';
+import { updateFirstCommentDates } from '@/lib/zendesk/updateFirstComment';
 
 export async function POST(request: NextRequest) {
   try {
@@ -37,6 +38,15 @@ export async function POST(request: NextRequest) {
       }
     } catch (err) {
       console.error('Anomaly detection failed:', err);
+    }
+
+    // コールセンターチケットの最初のコメント日時を更新
+    try {
+      for (const source of sources) {
+        await updateFirstCommentDates(source);
+      }
+    } catch (err) {
+      console.error('First comment update failed:', err);
     }
 
     return NextResponse.json({ success: true, data: results });

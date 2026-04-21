@@ -63,7 +63,22 @@ export async function buildBaseWhere(
   const includedCats = await getIncludedCategories(source);
   const catWhere = includedCats.length > 0 ? { inquiryCategory: { in: includedCats } } : {};
 
-  const dateWhere = dateRange ? { createdAt: dateRange } : {};
+  // コールセンターの場合、first_comment_atがあればそれで日付フィルタ
+  // first_comment_atがnullのチケットはcreated_atにフォールバック
+  let dateWhere: Record<string, unknown> = {};
+  if (dateRange) {
+    if (channel === 'call_center') {
+      // first_comment_at OR (first_comment_at is null AND createdAt)
+      dateWhere = {
+        OR: [
+          { firstCommentAt: dateRange },
+          { AND: [{ firstCommentAt: null }, { createdAt: dateRange }] },
+        ],
+      };
+    } else {
+      dateWhere = { createdAt: dateRange };
+    }
+  }
 
   return {
     isExcluded: false,
