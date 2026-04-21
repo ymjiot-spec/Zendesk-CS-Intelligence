@@ -36,18 +36,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'name, eventType, occurredAt are required' }, { status: 400 });
     }
 
-    const event = await prisma.eventLog.create({
-      data: {
-        name: body.name,
-        eventType: body.eventType,
-        occurredAt: new Date(body.occurredAt),
-        description: body.description || '',
-        tags: body.tags || [],
-        memo: body.memo || null,
-        urls: body.urls || [],
-        sourceKey: body.sourceKey || null,
-      },
-    });
+    const sourceKey = body.sourceKey || null;
+
+    // Use raw SQL to insert because Prisma client cache may not recognize sourceKey yet
+    const id = crypto.randomUUID();
+    const now = new Date();
+    await (prisma as any).$queryRawUnsafe(
+      `INSERT INTO event_logs (id, name, event_type, occurred_at, description, memo, urls, tags, source_key, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      id,
+      body.name,
+      body.eventType,
+      new Date(body.occurredAt),
+      body.description || '',
+      body.memo || null,
+      JSON.stringify(body.urls || []),
+      JSON.stringify(body.tags || []),
+      sourceKey,
+      now,
+      now,
+    );
+
+    const event = { id, name: body.name, eventType: body.eventType, occurredAt: body.occurredAt, sourceKey, description: body.description || '', tags: body.tags || [], memo: body.memo || null, urls: body.urls || [], createdAt: now, updatedAt: now };
 
     return NextResponse.json({ success: true, data: event }, { status: 201 });
   } catch (error) {

@@ -49,9 +49,17 @@ export async function PUT(
         tags: body.tags ?? [],
         memo: body.memo ?? null,
         urls: body.urls ?? [],
-        sourceKey: body.sourceKey !== undefined ? (body.sourceKey || null) : undefined,
       },
     });
+
+    // Update sourceKey via raw SQL (Prisma client cache issue)
+    if (body.sourceKey !== undefined) {
+      await (prisma as any).$queryRawUnsafe(
+        `UPDATE event_logs SET source_key = $1 WHERE id = $2`,
+        body.sourceKey || null,
+        id,
+      );
+    }
 
     return NextResponse.json<ApiResponse<typeof event>>({
       success: true,
