@@ -146,35 +146,57 @@ export default function DashboardPage() {
 
         <DateRangeFilter onChange={handleDateChange} />
 
-        {/* ===== KPIカード 5枚 ===== */}
+        {/* ===== KPIカード ===== */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
           <KpiCard
             label="📅 選択期間合計"
             value={s.totalCount ?? 0}
-            sub={`${dateRange?.startDate ?? ''} 〜 ${dateRange?.endDate ?? ''}`}
+            diff={s.periodOverPeriodDiff}
+            rate={s.periodOverPeriodRate}
+            sub={`前同期間: ${s.prevPeriodCount ?? 0}件`}
             color="blue"
           />
           <KpiCard
-            label="今日"
+            label="📧 チケット"
+            value={s.ticketCount ?? 0}
+            sub={`全体の${s.totalCount > 0 ? Math.round((s.ticketCount ?? 0) / s.totalCount * 100) : 0}%`}
+          />
+          <KpiCard
+            label="📞 コール"
+            value={s.callCount ?? 0}
+            sub={`全体の${s.totalCount > 0 ? Math.round((s.callCount ?? 0) / s.totalCount * 100) : 0}%`}
+          />
+          <KpiCard
+            label="📊 日平均"
+            value={s.periodDailyAvg ?? 0}
+            sub={`7日平均: ${s.avg7Days ?? 0} / 30日平均: ${s.avg30Days ?? 0}`}
+          />
+          <KpiCard
+            label="🔥 ピーク日"
+            value={s.peakCount ?? 0}
+            sub={s.peakDate ? `${s.peakDate}` : ''}
+            color={s.peakCount > (s.periodDailyAvg ?? 0) * 1.5 ? 'red' : undefined}
+          />
+        </div>
+
+        {/* ===== 日次KPI（今日/今週/今月）===== */}
+        <div className="grid grid-cols-3 gap-3">
+          <KpiCard
+            label="今日 vs 昨日"
             value={s.todayCount ?? 0}
             diff={s.dayOverDayDiff}
             rate={s.dayOverDayRate}
             sub={`昨日: ${s.previousDayCount ?? 0}件`}
           />
           <KpiCard
-            label="直近7日合計"
-            value={s.last7DaysCount ?? 0}
-            sub={`7日平均: ${s.avg7Days ?? 0}件/日`}
-          />
-          <KpiCard
-            label="今週"
+            label="今週 vs 先週"
             value={s.thisWeekCount ?? 0}
             diff={s.weekOverWeekDiff}
             rate={s.weekOverWeekRate}
             sub={`先週同期間: ${s.lastWeekCount ?? 0}件`}
           />
           <KpiCard
-            label="今月"
+            label="今月 vs 先月"
             value={s.thisMonthCount ?? 0}
             diff={s.monthOverMonthDiff}
             rate={s.monthOverMonthRate}
@@ -225,6 +247,17 @@ export default function DashboardPage() {
               </tr>
             </thead>
             <tbody className="text-gray-800">
+              <tr className="border-b border-blue-100 bg-blue-50/50">
+                <td className="py-2 font-medium">📅 選択期間 vs 前同期間</td>
+                <td className="py-2 text-right font-bold">{s.totalCount ?? 0}</td>
+                <td className="py-2 text-right text-gray-500">{s.prevPeriodCount ?? 0}</td>
+                <td className={`py-2 text-right font-medium ${(s.periodOverPeriodDiff ?? 0) > 0 ? 'text-red-600' : (s.periodOverPeriodDiff ?? 0) < 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                  {(s.periodOverPeriodDiff ?? 0) >= 0 ? '+' : ''}{s.periodOverPeriodDiff ?? 0}
+                </td>
+                <td className={`py-2 text-right ${(s.periodOverPeriodRate ?? 0) > 0 ? 'text-red-600' : (s.periodOverPeriodRate ?? 0) < 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                  {(s.periodOverPeriodRate ?? 0) >= 0 ? '+' : ''}{s.periodOverPeriodRate ?? 0}%
+                </td>
+              </tr>
               <tr className="border-b border-gray-100">
                 <td className="py-2 font-medium">今日 vs 昨日</td>
                 <td className="py-2 text-right">{s.todayCount ?? 0}</td>
@@ -258,11 +291,12 @@ export default function DashboardPage() {
                   {(s.monthOverMonthRate ?? 0) >= 0 ? '+' : ''}{s.monthOverMonthRate ?? 0}%
                 </td>
               </tr>
-              <tr>
-                <td className="py-2 font-medium">30日平均</td>
-                <td className="py-2 text-right">{s.avg30Days ?? 0} 件/日</td>
+              <tr className="border-b border-gray-100">
+                <td className="py-2 font-medium">📧 チケット / 📞 コール</td>
+                <td className="py-2 text-right">{s.ticketCount ?? 0} / {s.callCount ?? 0}</td>
+                <td className="py-2 text-right text-gray-500">日平均: {s.periodDailyAvg ?? 0}</td>
                 <td className="py-2 text-right text-gray-500">7日平均: {s.avg7Days ?? 0}</td>
-                <td className="py-2" colSpan={2}></td>
+                <td className="py-2 text-right text-gray-500">30日平均: {s.avg30Days ?? 0}</td>
               </tr>
             </tbody>
           </table>

@@ -105,10 +105,61 @@ export async function GET(request: NextRequest) {
     const lastMonthFullWhere = await buildBaseWhere(source, channel, lastMonthFullRange);
     const lastMonthFullCount = await prisma.ticket.count({ where: lastMonthFullWhere as any });
 
+    // --- チケット/コール内訳（選択期間）---
+    const ticketOnlyWhere = await buildBaseWhere(source, 'ticket', range);
+    const callOnlyWhere = await buildBaseWhere(source, 'call_center', range);
+    const ticketCount = await prisma.ticket.count({ where: ticketOnlyWhere as any });
+    const callCount = await prisma.ticket.count({ where: callOnlyWhere as any });
+
+    // --- 選択期間の日平均 ---
+    const periodDays = dayCount(startDate, endDate);
+    const periodDailyAvg = periodDays > 0 ? Math.round((totalCount / periodDays) * 10) / 10 : 0;
+
+    // --- ピーク日（選択期間内で最も件数が多い日）---
+    let peakDate = '';
+    let peakCount = 0;
+    try {
+      const peakRows: any[] = await (prisma as any).$queryRawUnsafe(
+        `SELECT to_char(created_at AT TIME ZONE 'Asia/Tokyo', 'YYYY-MM-DD') as d, count(*)::int as c
+         FROM tickets WHERE is_excluded = false
+         AND created_at >= $1 AND created_at < $2
+         ${source !== 'ALL' ? 'AND source_key = $3' : ''}
+         GROUP BY d ORDER BY c DESC LIMIT 1`,
+        ...(source !== 'ALL' ? [range.gte, range.lt, source] : [range.gte, range.lt])
+      );
+      if (peakRows.length > 0) {
+        peakDate = peakRows[0].d;
+        peakCount = peakRows[0].c;
+      }
+    } catch { /* */ }
+
+    // --- 前同期間比較（選択期間と同じ日数分の直前期間）---
+    const prevPeriodEnd = shiftDays(startDate, -1);
+    const prevPeriodStart = shiftDays(prevPeriodEnd, -(periodDays - 1));
+    const prevPeriodRange = jstDateRange(prevPeriodStart, prevPeriodEnd);
+    const prevPeriodWhere = await buildBaseWhere(source, channel, prevPeriodRange);
+    const prevPeriodCount = await prisma.ticket.count({ where: prevPeriodWhere as any });
+    const periodOverPeriodDiff = totalCount - prevPeriodCount;
+    const periodOverPeriodRate = prevPeriodCount > 0
+      ? Math.round((periodOverPeriodDiff / prevPeriodCount) * 1000) / 10
+      : 0;
+
     const data = {
       date: endDate,
       // 選択期間の合計
       totalCount,
+      // チケット/コール内訳
+      ticketCount,
+      callCount,
+      // 選択期間の日平均
+      periodDailyAvg,
+      // ピーク日
+      peakDate,
+      peakCount,
+      // 前同期間比較
+      prevPeriodCount,
+      periodOverPeriodDiff,
+      periodOverPeriodRate,
       // 個別日次
       todayCount,
       previousDayCount,
