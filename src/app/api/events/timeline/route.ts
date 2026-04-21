@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { COMPANY_LIST, getCompanyName } from '@/lib/company-colors';
+import { COMPANY_LIST } from '@/lib/company-colors';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl;
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
-    const sourceKey = searchParams.get('sourceKey');
 
     if (!startDate || !endDate) {
       return NextResponse.json(
@@ -20,30 +19,35 @@ export async function GET(request: NextRequest) {
     const lt = new Date(endDate + 'T00:00:00+09:00');
     lt.setDate(lt.getDate() + 1);
 
-    const where: any = { occurredAt: { gte, lt } };
+    // Use raw SQL to get sourceKey (Prisma client cache issue)
+    const events: any[] = await (prisma as any).$queryRawUnsafe(
+      `SELECT id, name, event_type as "eventType", occurred_at as "occurredAt", source_key as "sourceKey", impact_score as "impactScore"
+       FROM event_logs
+       WHERE occurred_at >= $1 AND occurred_at < $2
+       ORDER BY occurred_at ASC`,
+      gte,
+      lt,
+    );
 
-    const events = await prisma.eventLog.findMany({
-      where,
-      orderBy: { occurredAt: 'asc' },
-      select: {
-        id: true,
-        name: true,
-        eventType: true,
-        occurredAt: true,
-        sourceKey: true,
-        impactScore: true,
-      },
-    });
+    // Normalize dates to ISO strings
+    const normalized = events.map((e: any) => ({
+      ...e,
+      occurredAt: e.occurredAt instanceof Date ? e.occurredAt.toISOString() : e.occurredAt,
+    }));
 
-    // Group by sourceKey
-    const allCompanyEvents = events.filter(
-      (e) => e.sourceKey === null || e.sourceKey === 'ALL'
+    // Events with sourceKey containing a company key (could be comma-separated)
+    const allCompanyEvents = normalized.filter(
+      (e: any) => !e.sourceKey || e.sourceKey === 'ALL'
     );
 
     const groups = COMPANY_LIST.map((company) => ({
       sourceKey: company.key,
       companyName: company.name,
-      events: events.filter((e) => e.sourceKey === company.key),
+      events: normalized.filter((e: any) => {
+        if (!e.sourceKey) return false;
+        // Support comma-separated sourceKeys
+        return e.sourceKey.split(',').includes(company.key);
+      }),
     }));
 
     return NextResponse.json({

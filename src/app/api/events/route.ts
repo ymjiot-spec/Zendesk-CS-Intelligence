@@ -22,7 +22,25 @@ export async function GET(request: NextRequest) {
       take: 50,
     });
 
-    return NextResponse.json({ success: true, data: events });
+    // Enrich with sourceKey via raw SQL (Prisma cache issue)
+    const ids = events.map((e: any) => e.id);
+    let sourceKeyMap: Record<string, string | null> = {};
+    if (ids.length > 0) {
+      const rows: any[] = await (prisma as any).$queryRawUnsafe(
+        `SELECT id, source_key FROM event_logs WHERE id = ANY($1)`,
+        ids,
+      );
+      for (const r of rows) {
+        sourceKeyMap[r.id] = r.source_key;
+      }
+    }
+
+    const enriched = events.map((e: any) => ({
+      ...e,
+      sourceKey: sourceKeyMap[e.id] ?? null,
+    }));
+
+    return NextResponse.json({ success: true, data: enriched });
   } catch (error) {
     return NextResponse.json({ success: false, data: [], error: error instanceof Error ? error.message : 'error' }, { status: 500 });
   }

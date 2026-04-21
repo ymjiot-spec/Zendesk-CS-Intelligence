@@ -52,17 +52,23 @@ export default function CompanyTimeline({
 
   const companies = COMPANY_LIST;
 
+  // Convert UTC ISO string to JST date string (YYYY-MM-DD)
+  const toJSTDate = (isoStr: string): string => {
+    const d = new Date(isoStr);
+    return d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
+  };
+
   // Group events by sourceKey+date
   const eventMap = useMemo(() => {
     const map = new Map<string, TimelineEvent[]>();
     for (const e of events) {
-      const dateStr = e.occurredAt.slice(0, 10);
+      const dateStr = toJSTDate(e.occurredAt);
       const key = `${e.sourceKey ?? 'ALL'}|${dateStr}`;
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(e);
     }
     for (const e of allCompanyEvents) {
-      const dateStr = e.occurredAt.slice(0, 10);
+      const dateStr = toJSTDate(e.occurredAt);
       for (const c of companies) {
         const key = `${c.key}|${dateStr}`;
         if (!map.has(key)) map.set(key, []);
