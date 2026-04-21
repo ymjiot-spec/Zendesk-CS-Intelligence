@@ -19,8 +19,10 @@ export default function EventsPage() {
   const [prediction, setPrediction] = useState<ImpactPrediction | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
+  const [currentRange, setCurrentRange] = useState<DateRange | null>(null);
 
   const fetchEvents = useCallback(async (range: DateRange) => {
+    setCurrentRange(range);
     setLoading(true);
     try {
       const params = new URLSearchParams({ startDate: range.startDate, endDate: range.endDate });
@@ -41,13 +43,18 @@ export default function EventsPage() {
     try {
       const method = editingEvent ? 'PUT' : 'POST';
       const url = editingEvent ? `/api/events/${editingEvent.id}` : '/api/events';
-      await fetch(url, {
+      const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
-      setShowForm(false);
-      setEditingEvent(null);
+      if (res.ok) {
+        setShowForm(false);
+        setEditingEvent(null);
+        if (currentRange) {
+          await fetchEvents(currentRange);
+        }
+      }
     } catch {
       // handle silently
     } finally {
