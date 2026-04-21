@@ -17,6 +17,7 @@ export interface EventLog {
   name: string;
   eventType: EventType;
   occurredAt: Date;
+  endDate?: Date | null;
   description: string;
   tags: string[];
   memo?: string;

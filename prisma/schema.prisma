@@ -126,6 +126,7 @@ model EventLog {
   tags        Json     @default("[]") @db.JsonB
   impactScore Float?   @map("impact_score")
   sourceKey   String?  @map("source_key") @db.VarChar(500)
+  endDate     DateTime? @map("end_date") @db.Timestamptz()
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 

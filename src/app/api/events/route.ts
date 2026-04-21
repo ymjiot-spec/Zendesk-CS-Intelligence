@@ -60,8 +60,8 @@ export async function POST(request: NextRequest) {
     const id = crypto.randomUUID();
     const now = new Date();
     await (prisma as any).$queryRawUnsafe(
-      `INSERT INTO event_logs (id, name, event_type, occurred_at, description, memo, urls, tags, source_key, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      `INSERT INTO event_logs (id, name, event_type, occurred_at, description, memo, urls, tags, source_key, end_date, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       id,
       body.name,
       body.eventType,
@@ -71,6 +71,7 @@ export async function POST(request: NextRequest) {
       JSON.stringify(body.urls || []),
       JSON.stringify(body.tags || []),
       sourceKey,
+      body.endDate ? new Date(body.endDate) : null,
       now,
       now,
     );

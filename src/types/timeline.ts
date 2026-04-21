@@ -9,6 +9,7 @@ export interface TimelineEvent {
   name: string;
   eventType: EventType;
   occurredAt: string;
+  endDate: string | null;
   sourceKey: string | null;
   impactScore: number | null;
 }

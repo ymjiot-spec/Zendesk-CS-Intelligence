@@ -27,6 +27,7 @@ export interface EventFormData {
   name: string;
   eventType: EventType;
   occurredAt: string;
+  endDate: string;
   description: string;
   tags: string[];
   memo: string;
@@ -67,6 +68,11 @@ export default function EventForm({ initialData, onSubmit, onCancel, loading }: 
       : new Date().toISOString().slice(0, 16)
   );
   const [description, setDescription] = useState(initialData?.description ?? '');
+  const [endDate, setEndDate] = useState(
+    initialData?.endDate
+      ? new Date(initialData.endDate).toISOString().slice(0, 10)
+      : ''
+  );
   const [tags, setTags] = useState<string[]>(initialData?.tags ?? []);
   const [customTag, setCustomTag] = useState('');
   const [memo, setMemo] = useState(initialData?.memo ?? '');
@@ -97,6 +103,7 @@ export default function EventForm({ initialData, onSubmit, onCancel, loading }: 
       name,
       eventType,
       occurredAt,
+      endDate,
       description,
       tags,
       memo,
@@ -123,7 +130,7 @@ export default function EventForm({ initialData, onSubmit, onCancel, loading }: 
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">イベントタイプ</label>
           <select
@@ -137,13 +144,23 @@ export default function EventForm({ initialData, onSubmit, onCancel, loading }: 
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">発生日時</label>
+          <label className="block text-xs font-medium text-gray-600 mb-1">開始日時</label>
           <input
             type="datetime-local"
             value={occurredAt}
             onChange={(e) => setOccurredAt(e.target.value)}
             required
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">終了日（任意）</label>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+            placeholder="期間イベントの場合"
           />
         </div>
       </div>

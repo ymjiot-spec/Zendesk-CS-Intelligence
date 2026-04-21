@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
 
     // Use raw SQL to get sourceKey (Prisma client cache issue)
     const events: any[] = await (prisma as any).$queryRawUnsafe(
-      `SELECT id, name, event_type as "eventType", occurred_at as "occurredAt", source_key as "sourceKey", impact_score as "impactScore"
+      `SELECT id, name, event_type as "eventType", occurred_at as "occurredAt", end_date as "endDate", source_key as "sourceKey", impact_score as "impactScore"
        FROM event_logs
        WHERE occurred_at >= $1 AND occurred_at < $2
        ORDER BY occurred_at ASC`,
@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
     const normalized = events.map((e: any) => ({
       ...e,
       occurredAt: e.occurredAt instanceof Date ? e.occurredAt.toISOString() : e.occurredAt,
+      endDate: e.endDate instanceof Date ? e.endDate.toISOString() : (e.endDate || null),
     }));
 
     // Events with sourceKey containing a company key (could be comma-separated)
