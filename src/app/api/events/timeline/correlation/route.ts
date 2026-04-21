@@ -45,17 +45,9 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Get events in range for markers
-    const eventWhere: any = { occurredAt: { gte, lt } };
-    if (sourceKey && sourceKey !== 'ALL') {
-      eventWhere.OR = [
-        { sourceKey },
-        { sourceKey: null },
-        { sourceKey: 'ALL' },
-      ];
-    }
+    // Get events in range for markers (show all events regardless of sourceKey)
     const events = await prisma.eventLog.findMany({
-      where: eventWhere,
+      where: { occurredAt: { gte, lt } },
       select: { id: true, name: true, eventType: true, occurredAt: true },
     });
 

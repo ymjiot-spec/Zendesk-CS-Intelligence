@@ -21,13 +21,6 @@ export async function GET(request: NextRequest) {
     lt.setDate(lt.getDate() + 1);
 
     const where: any = { occurredAt: { gte, lt } };
-    if (sourceKey && sourceKey !== 'ALL') {
-      where.OR = [
-        { sourceKey },
-        { sourceKey: null },
-        { sourceKey: 'ALL' },
-      ];
-    }
 
     const events = await prisma.eventLog.findMany({
       where,
