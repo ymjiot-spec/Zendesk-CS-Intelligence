@@ -1,52 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { ApiResponse, PaginatedResult } from '@/types/api';
-import type { EventLog } from '@/types/event';
+import prisma from '@/lib/prisma';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl;
-    const page = parseInt(searchParams.get('page') || '1', 10);
-    const pageSize = parseInt(searchParams.get('pageSize') || '20', 10);
-    const eventTypes = searchParams.get('eventTypes');
-    const tags = searchParams.get('tags');
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
-    const sortBy = searchParams.get('sortBy') || 'occurredAt';
-    const sortOrder = searchParams.get('sortOrder') || 'desc';
 
-    void eventTypes;
-    void tags;
-    void startDate;
-    void endDate;
-    void sortBy;
-    void sortOrder;
+    const where: any = {};
+    if (startDate && endDate) {
+      where.occurredAt = {
+        gte: new Date(startDate + 'T00:00:00+09:00'),
+        lt: new Date(endDate + 'T00:00:00+09:00'),
+      };
+      where.occurredAt.lt.setDate(where.occurredAt.lt.getDate() + 1);
+    }
 
-    const data: PaginatedResult<EventLog> = {
-      items: [],
-      total: 0,
-      page,
-      pageSize,
-      totalPages: 0,
-    };
-
-    return NextResponse.json<ApiResponse<PaginatedResult<EventLog>>>({
-      success: true,
-      data,
-      meta: {
-        lastUpdatedAt: new Date().toISOString(),
-        populationInfo: { totalCount: 0, excludedCount: 0 },
-      },
+    const events = await prisma.eventLog.findMany({
+      where,
+      orderBy: { occurredAt: 'desc' },
+      take: 50,
     });
+
+    return NextResponse.json({ success: true, data: events });
   } catch (error) {
-    return NextResponse.json<ApiResponse<null>>(
-      {
-        success: false,
-        data: null,
-        meta: { lastUpdatedAt: new Date().toISOString(), populationInfo: { totalCount: 0, excludedCount: 0 } },
-        error: { code: 'INTERNAL_ERROR', message: error instanceof Error ? error.message : 'Unknown error' },
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, data: [], error: error instanceof Error ? error.message : 'error' }, { status: 500 });
   }
 }
 
@@ -55,50 +33,24 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     if (!body.name || !body.eventType || !body.occurredAt) {
-      return NextResponse.json<ApiResponse<null>>(
-        {
-          success: false,
-          data: null,
-          meta: { lastUpdatedAt: new Date().toISOString(), populationInfo: { totalCount: 0, excludedCount: 0 } },
-          error: { code: 'INVALID_PARAMS', message: 'name, eventType, and occurredAt are required' },
-        },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'name, eventType, occurredAt are required' }, { status: 400 });
     }
 
-    const data: EventLog = {
-      id: crypto.randomUUID(),
-      name: body.name,
-      eventType: body.eventType,
-      occurredAt: new Date(body.occurredAt),
-      description: body.description || '',
-      tags: body.tags || [],
-      memo: body.memo,
-      urls: body.urls || [],
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
+    const event = await prisma.eventLog.create({
+      data: {
+        name: body.name,
+        eventType: body.eventType,
+        occurredAt: new Date(body.occurredAt),
+        description: body.description || '',
+        tags: body.tags || [],
+        memo: body.memo || null,
+        urls: body.urls || [],
+      },
+    });
 
-    return NextResponse.json<ApiResponse<EventLog>>(
-      {
-        success: true,
-        data,
-        meta: {
-          lastUpdatedAt: new Date().toISOString(),
-          populationInfo: { totalCount: 0, excludedCount: 0 },
-        },
-      },
-      { status: 201 }
-    );
+    return NextResponse.json({ success: true, data: event }, { status: 201 });
   } catch (error) {
-    return NextResponse.json<ApiResponse<null>>(
-      {
-        success: false,
-        data: null,
-        meta: { lastUpdatedAt: new Date().toISOString(), populationInfo: { totalCount: 0, excludedCount: 0 } },
-        error: { code: 'INTERNAL_ERROR', message: error instanceof Error ? error.message : 'Unknown error' },
-      },
-      { status: 500 }
-    );
+    console.error('Event create error:', error);
+    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'error' }, { status: 500 });
   }
 }
