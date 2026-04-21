@@ -45,6 +45,7 @@ export async function POST(request: NextRequest) {
         tags: body.tags || [],
         memo: body.memo || null,
         urls: body.urls || [],
+        sourceKey: body.sourceKey || null,
       },
     });
 

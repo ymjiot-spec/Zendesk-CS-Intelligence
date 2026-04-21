@@ -125,11 +125,13 @@ model EventLog {
   urls        Json     @default("[]") @db.JsonB
   tags        Json     @default("[]") @db.JsonB
   impactScore Float?   @map("impact_score")
+  sourceKey   String?  @map("source_key") @db.VarChar(50)
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
   @@index([occurredAt], name: "idx_event_logs_occurred_at")
   @@index([eventType], name: "idx_event_logs_event_type")
+  @@index([sourceKey, occurredAt], name: "idx_event_logs_source_key_occurred_at")
   @@map("event_logs")
 }
 
@@ -266,6 +268,18 @@ model AlertFiringRecord {
   @@index([alertRuleId], name: "idx_alert_firing_records_alert_rule_id")
   @@index([firedAt], name: "idx_alert_firing_records_fired_at")
   @@map("alert_firing_records")
+}
+
+model CategoryFilterSetting {
+  id              Int      @id @default(autoincrement())
+  sourceKey       String   @map("source_key") @db.VarChar(255)
+  inquiryCategory String   @map("inquiry_category") @db.VarChar(500)
+  isIncluded      Boolean  @default(true) @map("is_included")
+  updatedAt       DateTime @default(now()) @map("updated_at") @db.Timestamptz()
+  sortOrder       Int?     @default(999) @map("sort_order")
+
+  @@unique([sourceKey, inquiryCategory])
+  @@map("category_filter_settings")
 }
 
 model ActionSuggestion {

@@ -49,6 +49,7 @@ export async function PUT(
         tags: body.tags ?? [],
         memo: body.memo ?? null,
         urls: body.urls ?? [],
+        sourceKey: body.sourceKey !== undefined ? (body.sourceKey || null) : undefined,
       },
     });
 

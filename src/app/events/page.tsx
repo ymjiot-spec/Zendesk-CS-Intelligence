@@ -3,12 +3,22 @@
 import React, { useState, useCallback } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import DateRangeFilter, { type DateRange } from '@/components/filters/DateRangeFilter';
-import { EventForm, EventList, EventDetail, PredictionBanner } from '@/components/event';
+import {
+  EventForm, EventList, EventDetail, PredictionBanner,
+  TabNavigation, CompanyTimeline, CorrelationChart, ImpactAnalysisPanel,
+} from '@/components/event';
+import type { TabId } from '@/components/event/TabNavigation';
 import type { EventFormData } from '@/components/event/EventForm';
 import type { EventLog } from '@/types/event';
+import type { TimelineEvent, CorrelationDataPoint, ImpactAnalysisData } from '@/types/timeline';
 import type { ImpactScoreResult, OverlapAnalysisResult, ImpactPrediction } from '@/types/ai';
 
 export default function EventsPage() {
+  // Shared state
+  const [activeTab, setActiveTab] = useState<TabId>('timeline');
+  const [currentRange, setCurrentRange] = useState<DateRange | null>(null);
+
+  // List tab state
   const [loading, setLoading] = useState(true);
   const [events, setEvents] = useState<EventLog[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -19,10 +29,16 @@ export default function EventsPage() {
   const [prediction, setPrediction] = useState<ImpactPrediction | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
-  const [currentRange, setCurrentRange] = useState<DateRange | null>(null);
 
+  // Timeline state
+  const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
+  const [allCompanyEvents, setAllCompanyEvents] = useState<TimelineEvent[]>([]);
+  const [correlationData, setCorrelationData] = useState<CorrelationDataPoint[]>([]);
+  const [analysisData, setAnalysisData] = useState<ImpactAnalysisData | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+
+  // Fetch events list (for 一覧 tab)
   const fetchEvents = useCallback(async (range: DateRange) => {
-    setCurrentRange(range);
     setLoading(true);
     try {
       const params = new URLSearchParams({ startDate: range.startDate, endDate: range.endDate });
@@ -31,13 +47,58 @@ export default function EventsPage() {
         const json = await res.json();
         setEvents(json.data ?? json);
       }
-    } catch {
-      // handle silently
-    } finally {
-      setLoading(false);
-    }
+    } catch { /* */ } finally { setLoading(false); }
   }, []);
 
+  // Fetch timeline data
+  const fetchTimeline = useCallback(async (range: DateRange) => {
+    try {
+      const params = new URLSearchParams({ startDate: range.startDate, endDate: range.endDate });
+      const res = await fetch(`/api/events/timeline?${params}`);
+      if (res.ok) {
+        const json = await res.json();
+        const groups = json.data?.groups ?? [];
+        const allEvents = groups.flatMap((g: any) => g.events);
+        setTimelineEvents(allEvents);
+        setAllCompanyEvents(json.data?.allCompanyEvents ?? []);
+      }
+    } catch { /* */ }
+  }, []);
+
+  // Fetch correlation data
+  const fetchCorrelation = useCallback(async (range: DateRange) => {
+    try {
+      const params = new URLSearchParams({ startDate: range.startDate, endDate: range.endDate });
+      const res = await fetch(`/api/events/timeline/correlation?${params}`);
+      if (res.ok) {
+        const json = await res.json();
+        setCorrelationData(json.data?.daily ?? []);
+      }
+    } catch { /* */ }
+  }, []);
+
+  // Handle date range change — fetch all data
+  const handleDateChange = useCallback((range: DateRange) => {
+    setCurrentRange(range);
+    fetchEvents(range);
+    fetchTimeline(range);
+    fetchCorrelation(range);
+  }, [fetchEvents, fetchTimeline, fetchCorrelation]);
+
+  // Handle event click on timeline → load analysis
+  const handleTimelineEventClick = useCallback(async (event: TimelineEvent) => {
+    setAnalysisLoading(true);
+    setAnalysisData(null);
+    try {
+      const res = await fetch(`/api/events/${event.id}/analysis`);
+      if (res.ok) {
+        const json = await res.json();
+        setAnalysisData(json.data ?? null);
+      }
+    } catch { /* */ } finally { setAnalysisLoading(false); }
+  }, []);
+
+  // List tab handlers
   const handleSubmit = async (data: EventFormData) => {
     setFormLoading(true);
     try {
@@ -52,24 +113,27 @@ export default function EventsPage() {
         setShowForm(false);
         setEditingEvent(null);
         if (currentRange) {
-          await fetchEvents(currentRange);
+          fetchEvents(currentRange);
+          fetchTimeline(currentRange);
+          fetchCorrelation(currentRange);
         }
       }
-    } catch {
-      // handle silently
-    } finally {
-      setFormLoading(false);
-    }
+    } catch { /* */ } finally { setFormLoading(false); }
   };
 
   const handleEdit = (event: EventLog) => {
     setEditingEvent(event);
     setShowForm(true);
+    setActiveTab('list');
   };
 
   const handleDelete = async (eventId: string) => {
     await fetch(`/api/events/${eventId}`, { method: 'DELETE' });
     setEvents((prev) => prev.filter((e) => e.id !== eventId));
+    if (currentRange) {
+      fetchTimeline(currentRange);
+      fetchCorrelation(currentRange);
+    }
   };
 
   const handleSelectEvent = async (event: EventLog) => {
@@ -93,54 +157,108 @@ export default function EventsPage() {
         const json = await predRes.value.json();
         setPrediction(json.data ?? json);
       }
-    } catch {
-      // handle silently
-    } finally {
-      setDetailLoading(false);
-    }
+    } catch { /* */ } finally { setDetailLoading(false); }
   };
 
   return (
     <DashboardLayout>
       <div className="space-y-4">
+        {/* Header */}
         <div className="flex items-center justify-between">
-          <DateRangeFilter onChange={fetchEvents} />
+          <DateRangeFilter onChange={handleDateChange} />
           <button
-            onClick={() => { setShowForm(true); setEditingEvent(null); }}
+            onClick={() => { setShowForm(true); setEditingEvent(null); setActiveTab('list'); }}
             className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700"
           >
             + イベント登録
           </button>
         </div>
 
-        {showForm && (
-          <>
-            <PredictionBanner prediction={prediction} />
-            <EventForm
-              initialData={editingEvent ?? undefined}
-              onSubmit={handleSubmit}
-              onCancel={() => { setShowForm(false); setEditingEvent(null); }}
-              loading={formLoading}
+        {/* Tabs */}
+        <TabNavigation activeTab={activeTab} onTabChange={setActiveTab} />
+
+        {/* Tab content */}
+        {activeTab === 'timeline' && (
+          <div className="space-y-4">
+            <CompanyTimeline
+              events={timelineEvents}
+              allCompanyEvents={allCompanyEvents}
+              startDate={currentRange?.startDate ?? ''}
+              endDate={currentRange?.endDate ?? ''}
+              onEventClick={handleTimelineEventClick}
             />
-          </>
+            <CorrelationChart data={correlationData} mini />
+            {analysisData && (
+              <ImpactAnalysisPanel
+                data={analysisData}
+                loading={analysisLoading}
+                onClose={() => setAnalysisData(null)}
+              />
+            )}
+          </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <EventList
-            events={events}
-            loading={loading}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
-          />
-          {selectedEvent && (
-            <EventDetail
-              event={selectedEvent}
-              impact={impact}
-              overlap={overlap}
-              loading={detailLoading}
+        {activeTab === 'list' && (
+          <div>
+            {showForm && (
+              <>
+                <PredictionBanner prediction={prediction} />
+                <EventForm
+                  initialData={editingEvent ?? undefined}
+                  onSubmit={handleSubmit}
+                  onCancel={() => { setShowForm(false); setEditingEvent(null); }}
+                  loading={formLoading}
+                />
+              </>
+            )}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+              <EventList
+                events={events}
+                loading={loading}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+              />
+              {selectedEvent && (
+                <EventDetail
+                  event={selectedEvent}
+                  impact={impact}
+                  overlap={overlap}
+                  loading={detailLoading}
+                />
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'correlation' && (
+          <div className="space-y-4">
+            <CompanyTimeline
+              events={timelineEvents}
+              allCompanyEvents={allCompanyEvents}
+              startDate={currentRange?.startDate ?? ''}
+              endDate={currentRange?.endDate ?? ''}
+              onEventClick={handleTimelineEventClick}
             />
-          )}
-        </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="lg:col-span-2">
+                <CorrelationChart data={correlationData} />
+              </div>
+              <div>
+                {analysisLoading || analysisData ? (
+                  <ImpactAnalysisPanel
+                    data={analysisData}
+                    loading={analysisLoading}
+                    onClose={() => setAnalysisData(null)}
+                  />
+                ) : (
+                  <div className="bg-white rounded-lg border border-gray-200 p-6 text-center">
+                    <p className="text-sm text-gray-400">タイムラインのイベントをクリックすると影響分析を表示します</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );

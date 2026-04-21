@@ -22,6 +22,7 @@ export interface EventLog {
   memo?: string;
   urls: string[];
   impactScore?: number;
+  sourceKey: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

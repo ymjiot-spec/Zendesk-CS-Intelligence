@@ -5,6 +5,7 @@ import DashboardLayout from '@/components/layout/DashboardLayout';
 import DateRangeFilter, { type DateRange } from '@/components/filters/DateRangeFilter';
 import { CategoryBreakdown, MatrixTable, HourlyChart, Heatmap } from '@/components/dashboard';
 import { AlertBanner } from '@/components/alert';
+import { COMPANY_COLORS, ALL_COLOR, getCompanyColor } from '@/lib/company-colors';
 import type { CategoryBreakdown as CategoryBreakdownType, MatrixRow, HourlyData, HeatmapData } from '@/types/aggregation';
 import type { AlertFiringRecord } from '@/types/alert';
 
@@ -96,15 +97,17 @@ export default function DashboardPage() {
 
   const s = summary ?? {};
 
-  // 会社別カラー
-  const COMPANY_COLORS: Record<string, { bg: string; border: string; text: string; badge: string }> = {
-    ALL: { bg: 'bg-blue-600', border: 'border-blue-600', text: 'text-white', badge: 'bg-blue-600' },
-    starservicesupport: { bg: 'bg-orange-500', border: 'border-orange-500', text: 'text-white', badge: 'bg-orange-500' },
-    dmobilehelp: { bg: 'bg-pink-500', border: 'border-pink-500', text: 'text-white', badge: 'bg-pink-500' },
-    jcnhelp: { bg: 'bg-indigo-800', border: 'border-indigo-800', text: 'text-white', badge: 'bg-indigo-800' },
-    mpcahelp: { bg: 'bg-emerald-600', border: 'border-emerald-600', text: 'text-white', badge: 'bg-emerald-600' },
+  // 会社別カラー（一元管理から取得）
+  const companyColorMap: Record<string, { bg: string; border: string; text: string; badge: string }> = {
+    ALL: ALL_COLOR.tailwind,
+    ...Object.fromEntries(Object.entries(COMPANY_COLORS).map(([k, v]) => [k, v.tailwind])),
   };
-  const COMPANY_NAME_TO_KEY: Record<string, string> = { STAR: 'starservicesupport', JTBC: 'dmobilehelp', JCN: 'jcnhelp', MPCA: 'mpcahelp' };
+  const COMPANY_NAME_TO_KEY: Record<string, string> = {
+    STAR: 'starservicesupport',
+    JTBC: 'dmobilehelp',
+    JCN: 'jcnhelp',
+    MPCA: 'mpcahelp',
+  };
 
   return (
     <DashboardLayout>
@@ -115,7 +118,7 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex gap-1 flex-wrap">
             {[{ key: 'ALL', name: '全社比較' }, ...sources].map(btn => {
-              const colors = COMPANY_COLORS[btn.key] ?? COMPANY_COLORS.ALL;
+              const colors = companyColorMap[btn.key] ?? companyColorMap.ALL;
               return (
               <button key={btn.key} onClick={() => handleSourceChange(btn.key)}
                 className={`px-3 py-1.5 text-xs font-semibold rounded-md border ${activeSource === btn.key ? `${colors.bg} ${colors.text} ${colors.border}` : 'bg-white text-gray-600 border-gray-200 hover:opacity-80'}`}>
@@ -179,7 +182,7 @@ export default function DashboardPage() {
                 <div key={c.ticketId} className="flex items-center justify-between bg-white rounded-lg border border-red-100 p-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className={`px-2 py-0.5 text-[10px] font-bold text-white rounded ${(COMPANY_COLORS[COMPANY_NAME_TO_KEY[c.company] ?? ''] ?? COMPANY_COLORS.ALL).badge}`}>{c.company}</span>
+                      <span className={`px-2 py-0.5 text-[10px] font-bold text-white rounded ${(companyColorMap[COMPANY_NAME_TO_KEY[c.company] ?? ''] ?? companyColorMap.ALL).badge}`}>{c.company}</span>
                       <span className="text-[10px] px-2 py-0.5 bg-red-100 text-red-700 rounded">{c.status}</span>
                       <span className="text-[10px] text-gray-400">#{c.ticketId}</span>
                     </div>

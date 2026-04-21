@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import type { EventType, EventLog } from '@/types/event';
+import { COMPANY_LIST, getCompanyColor } from '@/lib/company-colors';
 
 const EVENT_TYPES: { value: EventType; label: string }[] = [
   { value: 'campaign_start', label: 'キャンペーン開始' },
@@ -30,11 +31,13 @@ export interface EventFormData {
   tags: string[];
   memo: string;
   urls: string[];
+  sourceKey: string | null;
 }
 
 export default function EventForm({ initialData, onSubmit, onCancel, loading }: EventFormProps) {
   const [name, setName] = useState(initialData?.name ?? '');
   const [eventType, setEventType] = useState<EventType>(initialData?.eventType ?? 'other');
+  const [sourceKey, setSourceKey] = useState<string>(initialData?.sourceKey ?? '');
   const [occurredAt, setOccurredAt] = useState(
     initialData?.occurredAt
       ? new Date(initialData.occurredAt).toISOString().slice(0, 16)
@@ -75,6 +78,7 @@ export default function EventForm({ initialData, onSubmit, onCancel, loading }: 
       tags,
       memo,
       urls: urls.filter((u) => u.trim()),
+      sourceKey: sourceKey || null,
     });
   };
 
@@ -96,7 +100,7 @@ export default function EventForm({ initialData, onSubmit, onCancel, loading }: 
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">イベントタイプ</label>
           <select
@@ -106,6 +110,19 @@ export default function EventForm({ initialData, onSubmit, onCancel, loading }: 
           >
             {EVENT_TYPES.map((t) => (
               <option key={t.value} value={t.value}>{t.label}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">対象会社</label>
+          <select
+            value={sourceKey}
+            onChange={(e) => setSourceKey(e.target.value)}
+            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+          >
+            <option value="">全社</option>
+            {COMPANY_LIST.map((c) => (
+              <option key={c.key} value={c.key}>{c.name}</option>
             ))}
           </select>
         </div>
