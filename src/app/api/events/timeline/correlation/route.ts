@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getIncludedCategories } from '@/lib/dashboard-query';
 
 export async function GET(request: NextRequest) {
   try {
@@ -26,6 +27,12 @@ export async function GET(request: NextRequest) {
     };
     if (sourceKey && sourceKey !== 'ALL') {
       ticketWhere.sourceKey = sourceKey;
+    }
+
+    // Apply category filter
+    const includedCats = await getIncludedCategories(sourceKey || 'ALL');
+    if (includedCats.length > 0) {
+      ticketWhere.inquiryCategory = { in: includedCats };
     }
 
     // Get all tickets in range

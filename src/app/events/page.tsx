@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import DateRangeFilter, { type DateRange } from '@/components/filters/DateRangeFilter';
 import {
   EventForm, EventList, EventDetail, PredictionBanner,
   TabNavigation, CompanyTimeline, CorrelationChart, ImpactAnalysisPanel,
 } from '@/components/event';
+import { COMPANY_LIST, ALL_COLOR, getCompanyColor } from '@/lib/company-colors';
 import type { TabId } from '@/components/event/TabNavigation';
 import type { EventFormData } from '@/components/event/EventForm';
 import type { EventLog } from '@/types/event';
@@ -17,6 +18,7 @@ export default function EventsPage() {
   // Shared state
   const [activeTab, setActiveTab] = useState<TabId>('timeline');
   const [currentRange, setCurrentRange] = useState<DateRange | null>(null);
+  const [activeSource, setActiveSource] = useState<string>('ALL');
 
   // List tab state
   const [loading, setLoading] = useState(true);
@@ -37,23 +39,29 @@ export default function EventsPage() {
   const [analysisData, setAnalysisData] = useState<ImpactAnalysisData | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
 
-  // Fetch events list (for 一覧 tab)
-  const fetchEvents = useCallback(async (range: DateRange) => {
+  // Fetch events list
+  const fetchEvents = useCallback(async (range: DateRange, source: string) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ startDate: range.startDate, endDate: range.endDate });
       const res = await fetch(`/api/events?${params}`);
       if (res.ok) {
         const json = await res.json();
-        setEvents(json.data ?? json);
+        let list = json.data ?? json;
+        // Client-side filter by sourceKey
+        if (source && source !== 'ALL') {
+          list = list.filter((e: any) => e.sourceKey === source || e.sourceKey === null || e.sourceKey === 'ALL');
+        }
+        setEvents(list);
       }
     } catch { /* */ } finally { setLoading(false); }
   }, []);
 
   // Fetch timeline data
-  const fetchTimeline = useCallback(async (range: DateRange) => {
+  const fetchTimeline = useCallback(async (range: DateRange, source: string) => {
     try {
       const params = new URLSearchParams({ startDate: range.startDate, endDate: range.endDate });
+      if (source && source !== 'ALL') params.set('sourceKey', source);
       const res = await fetch(`/api/events/timeline?${params}`);
       if (res.ok) {
         const json = await res.json();
@@ -66,9 +74,10 @@ export default function EventsPage() {
   }, []);
 
   // Fetch correlation data
-  const fetchCorrelation = useCallback(async (range: DateRange) => {
+  const fetchCorrelation = useCallback(async (range: DateRange, source: string) => {
     try {
       const params = new URLSearchParams({ startDate: range.startDate, endDate: range.endDate });
+      if (source && source !== 'ALL') params.set('sourceKey', source);
       const res = await fetch(`/api/events/timeline/correlation?${params}`);
       if (res.ok) {
         const json = await res.json();
@@ -77,13 +86,24 @@ export default function EventsPage() {
     } catch { /* */ }
   }, []);
 
-  // Handle date range change — fetch all data
+  // Fetch all data
+  const fetchAll = useCallback((range: DateRange, source: string) => {
+    fetchEvents(range, source);
+    fetchTimeline(range, source);
+    fetchCorrelation(range, source);
+  }, [fetchEvents, fetchTimeline, fetchCorrelation]);
+
+  // Handle date range change
   const handleDateChange = useCallback((range: DateRange) => {
     setCurrentRange(range);
-    fetchEvents(range);
-    fetchTimeline(range);
-    fetchCorrelation(range);
-  }, [fetchEvents, fetchTimeline, fetchCorrelation]);
+    fetchAll(range, activeSource);
+  }, [fetchAll, activeSource]);
+
+  // Handle company filter change
+  const handleSourceChange = (source: string) => {
+    setActiveSource(source);
+    if (currentRange) fetchAll(currentRange, source);
+  };
 
   // Handle event click on timeline → load analysis
   const handleTimelineEventClick = useCallback(async (event: TimelineEvent) => {
@@ -112,11 +132,7 @@ export default function EventsPage() {
       if (res.ok) {
         setShowForm(false);
         setEditingEvent(null);
-        if (currentRange) {
-          fetchEvents(currentRange);
-          fetchTimeline(currentRange);
-          fetchCorrelation(currentRange);
-        }
+        if (currentRange) fetchAll(currentRange, activeSource);
       }
     } catch { /* */ } finally { setFormLoading(false); }
   };
@@ -131,8 +147,8 @@ export default function EventsPage() {
     await fetch(`/api/events/${eventId}`, { method: 'DELETE' });
     setEvents((prev) => prev.filter((e) => e.id !== eventId));
     if (currentRange) {
-      fetchTimeline(currentRange);
-      fetchCorrelation(currentRange);
+      fetchTimeline(currentRange, activeSource);
+      fetchCorrelation(currentRange, activeSource);
     }
   };
 
@@ -160,10 +176,16 @@ export default function EventsPage() {
     } catch { /* */ } finally { setDetailLoading(false); }
   };
 
+  // Company color helper
+  const sourceButtons = [
+    { key: 'ALL', name: '全社' },
+    ...COMPANY_LIST.map((c) => ({ key: c.key, name: c.name })),
+  ];
+
   return (
     <DashboardLayout>
       <div className="space-y-4">
-        {/* Header */}
+        {/* Header row: date filter + register button */}
         <div className="flex items-center justify-between">
           <DateRangeFilter onChange={handleDateChange} />
           <button
@@ -172,6 +194,27 @@ export default function EventsPage() {
           >
             + イベント登録
           </button>
+        </div>
+
+        {/* Company filter buttons */}
+        <div className="flex items-center gap-1 flex-wrap">
+          {sourceButtons.map((btn) => {
+            const color = getCompanyColor(btn.key === 'ALL' ? null : btn.key);
+            const isActive = activeSource === btn.key;
+            return (
+              <button
+                key={btn.key}
+                onClick={() => handleSourceChange(btn.key)}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md border transition-colors ${
+                  isActive
+                    ? `${color.tailwind.bg} ${color.tailwind.text} ${color.tailwind.border}`
+                    : 'bg-white text-gray-600 border-gray-200 hover:opacity-80'
+                }`}
+              >
+                {btn.name}
+              </button>
+            );
+          })}
         </div>
 
         {/* Tabs */}
