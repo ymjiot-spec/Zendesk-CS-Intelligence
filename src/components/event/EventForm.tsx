@@ -31,13 +31,36 @@ export interface EventFormData {
   tags: string[];
   memo: string;
   urls: string[];
-  sourceKey: string | null;
+  sourceKey: string | null; // null=全社, single key, or comma-separated keys
 }
 
 export default function EventForm({ initialData, onSubmit, onCancel, loading }: EventFormProps) {
   const [name, setName] = useState(initialData?.name ?? '');
   const [eventType, setEventType] = useState<EventType>(initialData?.eventType ?? 'other');
   const [sourceKey, setSourceKey] = useState<string>(initialData?.sourceKey ?? '');
+  const [selectedCompanies, setSelectedCompanies] = useState<Set<string>>(() => {
+    const sk = initialData?.sourceKey;
+    if (!sk) return new Set(COMPANY_LIST.map((c) => c.key)); // 全社
+    return new Set(sk.split(',').filter(Boolean));
+  });
+  const isAllCompanies = selectedCompanies.size === COMPANY_LIST.length;
+
+  const toggleCompany = (key: string) => {
+    setSelectedCompanies((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+        if (next.size === 0) return new Set(COMPANY_LIST.map((c) => c.key));
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const selectAllCompanies = () => {
+    setSelectedCompanies(new Set(COMPANY_LIST.map((c) => c.key)));
+  };
   const [occurredAt, setOccurredAt] = useState(
     initialData?.occurredAt
       ? new Date(initialData.occurredAt).toISOString().slice(0, 16)
@@ -78,7 +101,7 @@ export default function EventForm({ initialData, onSubmit, onCancel, loading }: 
       tags,
       memo,
       urls: urls.filter((u) => u.trim()),
-      sourceKey: sourceKey || null,
+      sourceKey: isAllCompanies ? null : Array.from(selectedCompanies).join(','),
     });
   };
 
@@ -100,7 +123,7 @@ export default function EventForm({ initialData, onSubmit, onCancel, loading }: 
         />
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">イベントタイプ</label>
           <select
@@ -110,19 +133,6 @@ export default function EventForm({ initialData, onSubmit, onCancel, loading }: 
           >
             {EVENT_TYPES.map((t) => (
               <option key={t.value} value={t.value}>{t.label}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">対象会社</label>
-          <select
-            value={sourceKey}
-            onChange={(e) => setSourceKey(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
-          >
-            <option value="">全社</option>
-            {COMPANY_LIST.map((c) => (
-              <option key={c.key} value={c.key}>{c.name}</option>
             ))}
           </select>
         </div>
@@ -137,6 +147,42 @@ export default function EventForm({ initialData, onSubmit, onCancel, loading }: 
           />
         </div>
       </div>
+
+      {/* 対象会社 */}
+      <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">対象会社</label>
+          <div className="flex flex-wrap gap-1">
+            <button
+              type="button"
+              onClick={selectAllCompanies}
+              className={`px-2 py-1.5 text-[11px] font-medium rounded-md border transition-colors ${
+                isAllCompanies
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              全社
+            </button>
+            {COMPANY_LIST.map((c) => {
+              const color = getCompanyColor(c.key);
+              const isActive = selectedCompanies.has(c.key);
+              return (
+                <button
+                  key={c.key}
+                  type="button"
+                  onClick={() => toggleCompany(c.key)}
+                  className={`px-2 py-1.5 text-[11px] font-medium rounded-md border transition-colors ${
+                    isActive
+                      ? `${color.tailwind.bg} ${color.tailwind.text} ${color.tailwind.border}`
+                      : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  {c.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">説明</label>
