@@ -63,16 +63,25 @@ export default function CompanyTimeline({
     const map = new Map<string, TimelineEvent[]>();
     for (const e of events) {
       const dateStr = toJSTDate(e.occurredAt);
-      const key = `${e.sourceKey ?? 'ALL'}|${dateStr}`;
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(e);
+      // Handle comma-separated sourceKeys
+      const keys = e.sourceKey ? e.sourceKey.split(',') : ['ALL'];
+      for (const sk of keys) {
+        const mapKey = `${sk}|${dateStr}`;
+        if (!map.has(mapKey)) map.set(mapKey, []);
+        // Avoid duplicates
+        if (!map.get(mapKey)!.some((x) => x.id === e.id)) {
+          map.get(mapKey)!.push(e);
+        }
+      }
     }
     for (const e of allCompanyEvents) {
       const dateStr = toJSTDate(e.occurredAt);
       for (const c of companies) {
         const key = `${c.key}|${dateStr}`;
         if (!map.has(key)) map.set(key, []);
-        map.get(key)!.push(e);
+        if (!map.get(key)!.some((x) => x.id === e.id)) {
+          map.get(key)!.push(e);
+        }
       }
     }
     return map;

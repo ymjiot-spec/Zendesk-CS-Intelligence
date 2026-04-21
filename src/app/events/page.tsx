@@ -170,7 +170,14 @@ export default function EventsPage() {
       if (res.ok) {
         setShowForm(false);
         setEditingEvent(null);
-        if (currentRange) fetchAll(currentRange, selectedSources);
+        // Auto-switch to a range that includes the event date
+        const eventDate = data.occurredAt.slice(0, 10);
+        const rangeToUse = currentRange && currentRange.startDate <= eventDate && currentRange.endDate >= eventDate
+          ? currentRange
+          : { startDate: eventDate, endDate: eventDate };
+        setCurrentRange(rangeToUse);
+        fetchAll(rangeToUse, selectedSources);
+        setActiveTab('timeline');
       }
     } catch { /* */ } finally { setFormLoading(false); }
   };
