@@ -60,12 +60,11 @@ export default function EventsPage() {
 
   const selectAll = () => setSelectedSources(new Set(ALL_KEYS));
 
-  // Fetch events list
-  const fetchEvents = useCallback(async (range: DateRange) => {
+  // Fetch events list — get recent 50 events regardless of date range
+  const fetchEvents = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ startDate: range.startDate, endDate: range.endDate });
-      const res = await fetch(`/api/events?${params}`);
+      const res = await fetch(`/api/events?startDate=2020-01-01&endDate=2099-12-31`);
       if (res.ok) {
         const json = await res.json();
         setEvents(json.data ?? json);
@@ -114,7 +113,7 @@ export default function EventsPage() {
 
   // Fetch all data
   const fetchAll = useCallback((range: DateRange, sources: Set<string>) => {
-    fetchEvents(range);
+    fetchEvents();
     fetchTimeline(range);
     fetchCorrelation(range, sources);
   }, [fetchEvents, fetchTimeline, fetchCorrelation]);
