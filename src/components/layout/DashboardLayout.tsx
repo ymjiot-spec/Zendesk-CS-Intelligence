@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 
 const NAV_ITEMS = [
   { label: 'ダッシュボード', href: '/', icon: '📊' },
@@ -47,14 +48,15 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         </div>
         <nav className="flex-1 py-2">
           {NAV_ITEMS.map((item) => (
-            <a
+            <Link
               key={item.href}
               href={item.href}
               className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+              prefetch={true}
             >
               <span>{item.icon}</span>
               {sidebarOpen && <span>{item.label}</span>}
-            </a>
+            </Link>
           ))}
         </nav>
       </aside>

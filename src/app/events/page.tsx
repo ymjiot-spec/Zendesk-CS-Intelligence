@@ -60,6 +60,9 @@ export default function EventsPage() {
 
   const selectAll = () => setSelectedSources(new Set(ALL_KEYS));
 
+  // Cache for correlation data to avoid re-fetching
+  const correlationCache = React.useRef(new Map<string, CompanyCorrelationData>());
+
   // Fetch events list — get recent 50 events regardless of date range
   const fetchEvents = useCallback(async () => {
     setLoading(true);
@@ -87,27 +90,49 @@ export default function EventsPage() {
     } catch { /* */ }
   }, []);
 
-  // Fetch correlation data for selected companies (parallel)
+  // Fetch correlation data with caching
   const fetchCorrelation = useCallback(async (range: DateRange, sources: Set<string>) => {
     try {
       const keys = Array.from(sources);
-      const results = await Promise.all(
-        keys.map(async (key) => {
-          const params = new URLSearchParams({ startDate: range.startDate, endDate: range.endDate, sourceKey: key });
-          const res = await fetch(`/api/events/timeline/correlation?${params}`);
-          if (res.ok) {
-            const json = await res.json();
-            const company = COMPANY_LIST.find((c) => c.key === key);
-            return {
-              sourceKey: key,
-              companyName: company?.name ?? key,
-              daily: json.data?.daily ?? [],
-            } as CompanyCorrelationData;
-          }
-          return null;
-        })
-      );
-      setMultiCorrelation(results.filter(Boolean) as CompanyCorrelationData[]);
+      const rangeKey = `${range.startDate}_${range.endDate}`;
+      const results: CompanyCorrelationData[] = [];
+      const toFetch: string[] = [];
+
+      // Check cache first
+      for (const key of keys) {
+        const cacheKey = `${rangeKey}_${key}`;
+        const cached = correlationCache.current.get(cacheKey);
+        if (cached) {
+          results.push(cached);
+        } else {
+          toFetch.push(key);
+        }
+      }
+
+      // Fetch only missing data
+      if (toFetch.length > 0) {
+        const fetched = await Promise.all(
+          toFetch.map(async (key) => {
+            const params = new URLSearchParams({ startDate: range.startDate, endDate: range.endDate, sourceKey: key });
+            const res = await fetch(`/api/events/timeline/correlation?${params}`);
+            if (res.ok) {
+              const json = await res.json();
+              const company = COMPANY_LIST.find((c) => c.key === key);
+              const data: CompanyCorrelationData = {
+                sourceKey: key,
+                companyName: company?.name ?? key,
+                daily: json.data?.daily ?? [],
+              };
+              correlationCache.current.set(`${rangeKey}_${key}`, data);
+              return data;
+            }
+            return null;
+          })
+        );
+        results.push(...fetched.filter(Boolean) as CompanyCorrelationData[]);
+      }
+
+      setMultiCorrelation(results);
     } catch { /* */ }
   }, []);
 
@@ -121,6 +146,7 @@ export default function EventsPage() {
   // Handle date range change
   const handleDateChange = useCallback((range: DateRange) => {
     setCurrentRange(range);
+    correlationCache.current.clear(); // Clear cache on date change
     fetchAll(range, selectedSources);
   }, [fetchAll, selectedSources]);
 
@@ -139,7 +165,18 @@ export default function EventsPage() {
       }
     }
     setSelectedSources(nextSources);
-    if (currentRange) fetchCorrelation(currentRange, nextSources);
+
+    // Instantly show cached data, then fetch missing in background
+    if (currentRange) {
+      const rangeKey = `${currentRange.startDate}_${currentRange.endDate}`;
+      const instant: CompanyCorrelationData[] = [];
+      for (const k of nextSources) {
+        const cached = correlationCache.current.get(`${rangeKey}_${k}`);
+        if (cached) instant.push(cached);
+      }
+      if (instant.length > 0) setMultiCorrelation(instant);
+      fetchCorrelation(currentRange, nextSources);
+    }
   };
 
   // Handle event click on timeline
