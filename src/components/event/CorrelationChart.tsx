@@ -51,10 +51,10 @@ export default function CorrelationChart({ data, multiData, mini }: CorrelationC
         <ComposedChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
           <XAxis dataKey="date" tick={{ fontSize: mini ? 9 : 11 }}
-            tickFormatter={(v: string) => { const d = new Date(v + 'T12:00:00'); return `${d.getMonth()+1}/${d.getDate()}`; }} />
+            tickFormatter={(v: string) => { const d = new Date(String(v) + 'T12:00:00'); return `${d.getMonth()+1}/${d.getDate()}`; }} />
           <YAxis yAxisId="left" tick={{ fontSize: mini ? 9 : 11 }} />
           <YAxis yAxisId="right" orientation="right" tick={{ fontSize: mini ? 9 : 11 }} />
-          <Tooltip labelFormatter={(v: string) => { const d = new Date(v + 'T12:00:00'); return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`; }} />
+          <Tooltip labelFormatter={(v) => { const d = new Date(String(v) + 'T12:00:00'); return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`; }} />
           {!mini && <Legend wrapperStyle={{ fontSize: 11 }} />}
           <Bar yAxisId="left" dataKey="ticketCount" name="チケット数" fill={ALL_COLOR.hex} opacity={0.7} radius={[2,2,0,0]} />
           <Line yAxisId="right" type="monotone" dataKey="callCount" name="コール数" stroke="#f97316" strokeWidth={2} dot={{ r: 2 }} />
@@ -113,10 +113,10 @@ function MultiCompanyChart({ multiData, mini }: { multiData: CompanyCorrelationD
         <ComposedChart data={merged} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
           <XAxis dataKey="date" tick={{ fontSize: mini ? 9 : 11 }}
-            tickFormatter={(v: string) => { const d = new Date(v + 'T12:00:00'); return `${d.getMonth()+1}/${d.getDate()}`; }} />
+            tickFormatter={(v: string) => { const d = new Date(String(v) + 'T12:00:00'); return `${d.getMonth()+1}/${d.getDate()}`; }} />
           <YAxis yAxisId="left" tick={{ fontSize: mini ? 9 : 11 }} label={!mini ? { value: 'チケット', angle: -90, position: 'insideLeft', fontSize: 10 } : undefined} />
           <YAxis yAxisId="right" orientation="right" tick={{ fontSize: mini ? 9 : 11 }} label={!mini ? { value: 'コール', angle: 90, position: 'insideRight', fontSize: 10 } : undefined} />
-          <Tooltip labelFormatter={(v: string) => { const d = new Date(v + 'T12:00:00'); return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`; }} />
+          <Tooltip labelFormatter={(v) => { const d = new Date(String(v) + 'T12:00:00'); return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`; }} />
           {!mini && <Legend wrapperStyle={{ fontSize: 11 }} />}
 
           {/* Per-company bars (tickets) stacked */}

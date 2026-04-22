@@ -110,6 +110,7 @@ export class EventLogEngine {
       tags: input.tags,
       memo: input.memo,
       urls: input.urls ?? [],
+      sourceKey: null,
       createdAt: now,
       updatedAt: now,
     };

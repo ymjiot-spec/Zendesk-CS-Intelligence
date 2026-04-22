@@ -72,29 +72,6 @@ export async function GET(request: NextRequest) {
 
       return NextResponse.json({ success: true, data });
     }
-
-    // 日付でグループ化
-    const byDate = new Map<string, typeof rows>();
-    for (const r of rows) {
-      const key = r.aggregationDate.toISOString().split('T')[0];
-      if (!byDate.has(key)) byDate.set(key, []);
-      byDate.get(key)!.push(r);
-    }
-
-    const data = [...byDate.entries()].map(([dateStr, cats]) => {
-      const totalCount = cats.reduce((s, c) => s + c.count, 0);
-      const categories: Record<string, { count: number; percentage: number; diff: number }> = {};
-      for (const c of cats) {
-        categories[c.inquiryCategory] = {
-          count: c.count,
-          percentage: c.percentage,
-          diff: c.prevDayDiff,
-        };
-      }
-      return { date: new Date(dateStr), totalCount, categories };
-    });
-
-    return NextResponse.json({ success: true, data });
   } catch (error) {
     return NextResponse.json({ success: false, data: [], error: error instanceof Error ? error.message : 'error' }, { status: 500 });
   }

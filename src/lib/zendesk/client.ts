@@ -96,34 +96,6 @@ export class ZendeskClient {
   async getFirstCommentDate(ticketId: string): Promise<Date | null> {
     try {
       const data = await this.fetch<{
-        comments: { id: number; created_at: string; public: boolean }[];
-      }>(`/tickets/${ticketId}/comments.json?sort_order=asc&per_page=1`);
-      const first = data.comments?.[0];
-      return first ? new Date(first.created_at) : null;
-    } catch {
-      return null;
-    }
-  }
-
-  /** カテゴリフィールドのIDを取得（最初のドロップダウンカスタムフィールド） */
-  async getCategoryFieldId(): Promise<number | null> {
-    try {
-      const data = await this.fetch<{ ticket_fields: { id: number; type: string; title: string }[] }>(
-        '/ticket_fields.json'
-      );
-      const field = data.ticket_fields.find(
-        (f) => f.type === 'tagger' || f.title.includes('カテゴリ') || f.title.toLowerCase().includes('category')
-      );
-      return field?.id ?? null;
-    } catch {
-      return null;
-    }
-  }
-
-  /** チケットの最初のコメント日時を取得 */
-  async getFirstCommentDate(ticketId: string): Promise<Date | null> {
-    try {
-      const data = await this.fetch<{
         comments: { id: number; created_at: string; public: boolean; author_id: number }[];
       }>(`/tickets/${ticketId}/comments.json?sort_order=asc&per_page=1`);
       const comments = data.comments ?? [];

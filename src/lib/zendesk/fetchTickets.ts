@@ -34,7 +34,7 @@ export async function fetchAndSaveTickets(source: ZendeskSourceConfig): Promise<
       // カスタムフィールドから「お問い合わせ項目」を取得
       let category = 'その他';
       if (source.inquiryFieldId) {
-        const fields = t.custom_fields ?? t.fields ?? [];
+        const fields = t.custom_fields ?? [];
         const field = fields.find((f: any) => f.id === source.inquiryFieldId);
         if (field?.value) {
           category = String(field.value);
