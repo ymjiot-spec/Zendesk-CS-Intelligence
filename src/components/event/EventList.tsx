@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import type { EventLog, EventType } from '@/types/event';
+import { getCompanyColor, COMPANY_LIST } from '@/lib/company-colors';
 
 const EVENT_TYPE_LABELS: Record<EventType, string> = {
   campaign_start: 'キャンペーン',
@@ -23,6 +24,13 @@ const EVENT_TYPE_COLORS: Record<EventType, string> = {
   other: 'bg-gray-100 text-gray-700',
 };
 
+function getCompanyBadges(sourceKey: string | null | undefined) {
+  if (!sourceKey) return [{ name: '全社', color: getCompanyColor(null) }];
+  const keys = sourceKey.split(',').filter(Boolean);
+  if (keys.length === COMPANY_LIST.length) return [{ name: '全社', color: getCompanyColor(null) }];
+  return keys.map((k) => ({ name: getCompanyColor(k).name, color: getCompanyColor(k) }));
+}
+
 interface EventListProps {
   events: EventLog[];
   loading?: boolean;
@@ -39,14 +47,14 @@ export default function EventList({ events, loading, onEdit, onDelete }: EventLi
   const allTags = useMemo(() => {
     const set = new Set<string>();
     const list = Array.isArray(events) ? events : [];
-    list.forEach((e) => e.tags.forEach((t) => set.add(t)));
+    list.forEach((e) => e.tags?.forEach((t: string) => set.add(t)));
     return Array.from(set).sort();
   }, [events]);
 
   const filtered = useMemo(() => {
     let result = Array.isArray(events) ? [...events] : [];
     if (filterType) result = result.filter((e) => e.eventType === filterType);
-    if (filterTag) result = result.filter((e) => e.tags.includes(filterTag));
+    if (filterTag) result = result.filter((e) => e.tags?.includes(filterTag));
     if (filterStart) result = result.filter((e) => new Date(e.occurredAt) >= new Date(filterStart));
     if (filterEnd) result = result.filter((e) => new Date(e.occurredAt) <= new Date(filterEnd + 'T23:59:59'));
     return result.sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime());
@@ -56,94 +64,108 @@ export default function EventList({ events, loading, onEdit, onDelete }: EventLi
     return (
       <div className="bg-white rounded-lg border border-gray-200 p-5 animate-pulse">
         <div className="h-4 bg-gray-200 rounded w-32 mb-4" />
-        {[1, 2, 3].map((i) => <div key={i} className="h-16 bg-gray-100 rounded mb-2" />)}
+        {[1, 2, 3].map((i) => <div key={i} className="h-10 bg-gray-100 rounded mb-2" />)}
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-5">
-      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">イベント一覧</h3>
-
-      {/* Filters */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        <select
-          value={filterType}
-          onChange={(e) => setFilterType(e.target.value as EventType | '')}
-          className="px-2 py-1 text-xs border border-gray-300 rounded"
-        >
-          <option value="">全タイプ</option>
-          {Object.entries(EVENT_TYPE_LABELS).map(([v, l]) => (
-            <option key={v} value={v}>{l}</option>
-          ))}
-        </select>
-        <select
-          value={filterTag}
-          onChange={(e) => setFilterTag(e.target.value)}
-          className="px-2 py-1 text-xs border border-gray-300 rounded"
-        >
-          <option value="">全タグ</option>
-          {allTags.map((t) => <option key={t} value={t}>{t}</option>)}
-        </select>
-        <input
-          type="date"
-          value={filterStart}
-          onChange={(e) => setFilterStart(e.target.value)}
-          className="px-2 py-1 text-xs border border-gray-300 rounded"
-          aria-label="開始日"
-        />
-        <span className="text-xs text-gray-400 self-center">〜</span>
-        <input
-          type="date"
-          value={filterEnd}
-          onChange={(e) => setFilterEnd(e.target.value)}
-          className="px-2 py-1 text-xs border border-gray-300 rounded"
-          aria-label="終了日"
-        />
+    <div className="bg-white rounded-lg border border-gray-200">
+      <div className="p-4 border-b border-gray-100">
+        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">イベント一覧</h3>
+        <div className="flex flex-wrap gap-2">
+          <select value={filterType} onChange={(e) => setFilterType(e.target.value as EventType | '')}
+            className="px-2 py-1 text-xs border border-gray-300 rounded">
+            <option value="">全タイプ</option>
+            {Object.entries(EVENT_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+          <select value={filterTag} onChange={(e) => setFilterTag(e.target.value)}
+            className="px-2 py-1 text-xs border border-gray-300 rounded">
+            <option value="">全タグ</option>
+            {allTags.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <input type="date" value={filterStart} onChange={(e) => setFilterStart(e.target.value)}
+            className="px-2 py-1 text-xs border border-gray-300 rounded" aria-label="開始日" />
+          <span className="text-xs text-gray-400 self-center">〜</span>
+          <input type="date" value={filterEnd} onChange={(e) => setFilterEnd(e.target.value)}
+            className="px-2 py-1 text-xs border border-gray-300 rounded" aria-label="終了日" />
+        </div>
       </div>
 
       {filtered.length === 0 ? (
-        <p className="text-sm text-gray-400">イベントなし</p>
+        <p className="text-sm text-gray-400 p-4">イベントなし</p>
       ) : (
-        <div className="space-y-2">
-          {filtered.map((event) => (
-            <div key={event.id} className="flex items-center gap-3 p-3 border border-gray-100 rounded-lg hover:bg-gray-50">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${EVENT_TYPE_COLORS[event.eventType]}`}>
-                    {EVENT_TYPE_LABELS[event.eventType]}
-                  </span>
-                  <span className="text-sm font-medium text-gray-800 truncate">{event.name}</span>
-                  {event.memo && <span className="text-[10px] text-gray-400">📝</span>}
-                </div>
-                <div className="flex items-center gap-2 text-xs text-gray-500">
-                  <span>{new Date(event.occurredAt).toLocaleDateString('ja-JP')}</span>
-                  {event.impactScore != null && (
-                    <span className="text-orange-600">Impact: {event.impactScore}</span>
-                  )}
-                  {event.tags.map((t) => (
-                    <span key={t} className="bg-gray-100 px-1.5 py-0.5 rounded text-[10px]">{t}</span>
-                  ))}
-                </div>
-              </div>
-              <div className="flex gap-1">
-                {onEdit && (
-                  <button onClick={() => onEdit(event)} className="px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded">
-                    編集
-                  </button>
-                )}
-                {onDelete && (
-                  <button onClick={() => {
-                    if (window.confirm(`「${event.name}」を削除しますか？`)) {
-                      onDelete(event.id);
-                    }
-                  }} className="px-2 py-1 text-xs text-red-500 hover:bg-red-50 rounded">
-                    削除
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200 text-left text-[10px] text-gray-500 uppercase">
+                <th className="px-3 py-2 whitespace-nowrap">日付</th>
+                <th className="px-3 py-2 whitespace-nowrap">対象会社</th>
+                <th className="px-3 py-2 whitespace-nowrap">種別</th>
+                <th className="px-3 py-2">イベント名</th>
+                <th className="px-3 py-2">説明</th>
+                <th className="px-3 py-2 whitespace-nowrap">タグ</th>
+                <th className="px-3 py-2 whitespace-nowrap">メモ</th>
+                <th className="px-3 py-2 whitespace-nowrap text-right">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((event) => {
+                const badges = getCompanyBadges((event as any).sourceKey);
+                return (
+                  <tr key={event.id} className="border-b border-gray-50 hover:bg-gray-50/50">
+                    <td className="px-3 py-2 whitespace-nowrap text-gray-600">
+                      {new Date(event.occurredAt).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex flex-wrap gap-0.5">
+                        {badges.map((b, i) => (
+                          <span key={i} className={`px-1.5 py-0.5 text-[9px] font-bold text-white rounded ${b.color.tailwind.badge}`}>
+                            {b.name}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className={`px-1.5 py-0.5 text-[9px] rounded font-medium ${EVENT_TYPE_COLORS[event.eventType]}`}>
+                        {EVENT_TYPE_LABELS[event.eventType]}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 font-medium text-gray-800 max-w-[200px] truncate">
+                      {event.name}
+                    </td>
+                    <td className="px-3 py-2 text-gray-500 max-w-[250px] truncate">
+                      {event.description || '—'}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex flex-wrap gap-0.5">
+                        {event.tags?.map((t: string) => (
+                          <span key={t} className="bg-gray-100 px-1 py-0.5 rounded text-[9px] text-gray-600">{t}</span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-gray-400 max-w-[150px] truncate">
+                      {event.memo ? '📝 ' + event.memo.slice(0, 30) : '—'}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap text-right">
+                      {onEdit && (
+                        <button onClick={() => onEdit(event)} className="px-2 py-0.5 text-[10px] text-blue-600 hover:bg-blue-50 rounded mr-1">
+                          編集
+                        </button>
+                      )}
+                      {onDelete && (
+                        <button onClick={() => {
+                          if (window.confirm(`「${event.name}」を削除しますか？`)) onDelete(event.id);
+                        }} className="px-2 py-0.5 text-[10px] text-red-500 hover:bg-red-50 rounded">
+                          削除
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

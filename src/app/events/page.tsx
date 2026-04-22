@@ -292,11 +292,8 @@ export default function EventsPage() {
                 />
               </>
             )}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+            <div className="mt-4">
               <EventList events={events} loading={loading} onEdit={handleEdit} onDelete={handleDelete} />
-              {selectedEvent && (
-                <EventDetail event={selectedEvent} impact={impact} overlap={overlap} loading={detailLoading} />
-              )}
             </div>
           </div>
         )}
