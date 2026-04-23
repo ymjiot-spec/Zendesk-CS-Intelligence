@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import {
-  jstDateRange, prevDay, weekAgo, shiftDays,
+  jstDateRange, prevDay, shiftDays,
   dayCount, lastMonthRange, thisWeekMonday, thisMonthFirst, todayJST,
 } from '@/lib/date-jst';
-import { buildBaseWhere } from '@/lib/dashboard-query';
+import { getIncludedCategories } from '@/lib/dashboard-query';
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,178 +15,118 @@ export async function GET(request: NextRequest) {
     const channel = searchParams.get('channel') ?? 'all';
 
     if (!startDate || !endDate) {
-      return NextResponse.json({ success: false, error: 'startDate and endDate are required' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'startDate and endDate required' }, { status: 400 });
     }
 
-    // --- 選択期間の合計件数 ---
+    // Pre-compute all date ranges
     const range = jstDateRange(startDate, endDate);
-    const baseWhere = await buildBaseWhere(source, channel, range);
-    const totalCount = await prisma.ticket.count({ where: baseWhere as any });
-
-    // --- endDate当日の件数 ---
-    const todayRange = jstDateRange(endDate, endDate);
-    const todayWhere = await buildBaseWhere(source, channel, todayRange);
-    const todayCount = await prisma.ticket.count({ where: todayWhere as any });
-
-    // --- 昨日の件数（endDate の前日1日分）---
-    const prevDateStr = prevDay(endDate);
-    const prevRange = jstDateRange(prevDateStr, prevDateStr);
-    const prevWhere = await buildBaseWhere(source, channel, prevRange);
-    const previousDayCount = await prisma.ticket.count({ where: prevWhere as any });
-
-    // --- 前日比（endDate当日 vs 前日）---
-    const dayOverDayDiff = todayCount - previousDayCount;
-    const dayOverDayRate = previousDayCount > 0
-      ? Math.round((dayOverDayDiff / previousDayCount) * 1000) / 10
-      : 0;
-
-    // --- 直近7日合計（endDateを含む過去7日間）---
-    const sevenDaysAgoStr = shiftDays(endDate, -6); // 当日含め7日
-    const last7Range = jstDateRange(sevenDaysAgoStr, endDate);
-    const last7Where = await buildBaseWhere(source, channel, last7Range);
-    const last7Count = await prisma.ticket.count({ where: last7Where as any });
-    const avg7Days = Math.round((last7Count / 7) * 10) / 10;
-
-    // --- 直近30日平均（endDateを含む過去30日間）---
-    const thirtyDaysAgoStr = shiftDays(endDate, -29); // 当日含め30日
-    const last30Range = jstDateRange(thirtyDaysAgoStr, endDate);
-    const last30Where = await buildBaseWhere(source, channel, last30Range);
-    const last30Count = await prisma.ticket.count({ where: last30Where as any });
-    const avg30Days = Math.round((last30Count / 30) * 10) / 10;
-
-    // --- 週比較（今週合計 vs 先週同期間）---
     const today = todayJST();
+    const prevDateStr = prevDay(endDate);
+    const sevenAgo = shiftDays(endDate, -6);
+    const thirtyAgo = shiftDays(endDate, -29);
     const thisMonday = thisWeekMonday(today);
     const lastMonday = shiftDays(thisMonday, -7);
     const daysIntoWeek = dayCount(thisMonday, today);
     const lastWeekSameDay = shiftDays(lastMonday, daysIntoWeek - 1);
-
-    const thisWeekRange = jstDateRange(thisMonday, today);
-    const thisWeekWhere = await buildBaseWhere(source, channel, thisWeekRange);
-    const thisWeekCount = await prisma.ticket.count({ where: thisWeekWhere as any });
-
-    const lastWeekSameRange = jstDateRange(lastMonday, lastWeekSameDay);
-    const lastWeekSameWhere = await buildBaseWhere(source, channel, lastWeekSameRange);
-    const lastWeekSameCount = await prisma.ticket.count({ where: lastWeekSameWhere as any });
-
-    const weekOverWeekDiff = thisWeekCount - lastWeekSameCount;
-    const weekOverWeekRate = lastWeekSameCount > 0
-      ? Math.round((weekOverWeekDiff / lastWeekSameCount) * 1000) / 10
-      : 0;
-
-    // --- 先週合計 ---
     const lastSunday = shiftDays(lastMonday, 6);
-    const lastWeekFullRange = jstDateRange(lastMonday, lastSunday);
-    const lastWeekFullWhere = await buildBaseWhere(source, channel, lastWeekFullRange);
-    const lastWeekFullCount = await prisma.ticket.count({ where: lastWeekFullWhere as any });
-
-    // --- 月比較（今月合計 vs 先月同日まで）---
     const thisFirst = thisMonthFirst(today);
     const daysIntoMonth = dayCount(thisFirst, today);
     const lastMon = lastMonthRange(today);
     const lastMonthSameDay = shiftDays(lastMon.startDate, daysIntoMonth - 1);
     const lastMonthEnd = lastMonthSameDay > lastMon.endDate ? lastMon.endDate : lastMonthSameDay;
-
-    const thisMonthDateRange = jstDateRange(thisFirst, today);
-    const thisMonthWhere = await buildBaseWhere(source, channel, thisMonthDateRange);
-    const thisMonthCount = await prisma.ticket.count({ where: thisMonthWhere as any });
-
-    const lastMonthCompRange = jstDateRange(lastMon.startDate, lastMonthEnd);
-    const lastMonthCompWhere = await buildBaseWhere(source, channel, lastMonthCompRange);
-    const lastMonthCompCount = await prisma.ticket.count({ where: lastMonthCompWhere as any });
-
-    const monthOverMonthDiff = thisMonthCount - lastMonthCompCount;
-    const monthOverMonthRate = lastMonthCompCount > 0
-      ? Math.round((monthOverMonthDiff / lastMonthCompCount) * 1000) / 10
-      : 0;
-
-    // --- 先月合計 ---
-    const lastMonthFullRange = jstDateRange(lastMon.startDate, lastMon.endDate);
-    const lastMonthFullWhere = await buildBaseWhere(source, channel, lastMonthFullRange);
-    const lastMonthFullCount = await prisma.ticket.count({ where: lastMonthFullWhere as any });
-
-    // --- チケット/コール内訳（選択期間）---
-    const ticketOnlyWhere = await buildBaseWhere(source, 'ticket', range);
-    const callOnlyWhere = await buildBaseWhere(source, 'call_center', range);
-    const ticketCount = await prisma.ticket.count({ where: ticketOnlyWhere as any });
-    const callCount = await prisma.ticket.count({ where: callOnlyWhere as any });
-
-    // --- 選択期間の日平均 ---
     const periodDays = dayCount(startDate, endDate);
-    const periodDailyAvg = periodDays > 0 ? Math.round((totalCount / periodDays) * 10) / 10 : 0;
+    const prevPeriodEnd = shiftDays(startDate, -1);
+    const prevPeriodStart = shiftDays(prevPeriodEnd, -(periodDays - 1));
 
-    // --- ピーク日（選択期間内で最も件数が多い日）---
+    // Build WHERE clause fragments
+    const includedCats = await getIncludedCategories(source);
+    const sourceFilter = source !== 'ALL' ? `AND source_key = '${source}'` : '';
+    const channelFilter = channel === 'ticket' ? `AND channel_type = 'ticket'` : channel === 'call_center' ? `AND channel_type = 'call_center'` : '';
+    const catFilter = includedCats.length > 0 ? `AND inquiry_category IN (${includedCats.map(c => `'${c.replace(/'/g, "''")}'`).join(',')})` : '';
+    const baseFilter = `is_excluded = false ${sourceFilter} ${channelFilter} ${catFilter}`;
+
+    // Helper to make JST date range
+    const jstGte = (d: string) => `'${d}T00:00:00+09:00'::timestamptz`;
+    const jstLt = (d: string) => `('${d}T00:00:00+09:00'::timestamptz + interval '1 day')`;
+
+    // Single SQL query with all counts
+    const sql = `
+      SELECT
+        count(*) FILTER (WHERE created_at >= ${jstGte(startDate)} AND created_at < ${jstLt(endDate)}) as total_count,
+        count(*) FILTER (WHERE created_at >= ${jstGte(startDate)} AND created_at < ${jstLt(endDate)} AND channel_type = 'ticket') as ticket_count,
+        count(*) FILTER (WHERE created_at >= ${jstGte(startDate)} AND created_at < ${jstLt(endDate)} AND channel_type = 'call_center') as call_count,
+        count(*) FILTER (WHERE created_at >= ${jstGte(endDate)} AND created_at < ${jstLt(endDate)}) as today_count,
+        count(*) FILTER (WHERE created_at >= ${jstGte(prevDateStr)} AND created_at < ${jstLt(prevDateStr)}) as prev_day_count,
+        count(*) FILTER (WHERE created_at >= ${jstGte(sevenAgo)} AND created_at < ${jstLt(endDate)}) as last7_count,
+        count(*) FILTER (WHERE created_at >= ${jstGte(thirtyAgo)} AND created_at < ${jstLt(endDate)}) as last30_count,
+        count(*) FILTER (WHERE created_at >= ${jstGte(thisMonday)} AND created_at < ${jstLt(today)}) as this_week_count,
+        count(*) FILTER (WHERE created_at >= ${jstGte(lastMonday)} AND created_at < ${jstLt(lastWeekSameDay)}) as last_week_same_count,
+        count(*) FILTER (WHERE created_at >= ${jstGte(lastMonday)} AND created_at < ${jstLt(lastSunday)}) as last_week_full_count,
+        count(*) FILTER (WHERE created_at >= ${jstGte(thisFirst)} AND created_at < ${jstLt(today)}) as this_month_count,
+        count(*) FILTER (WHERE created_at >= ${jstGte(lastMon.startDate)} AND created_at < ${jstLt(lastMonthEnd)}) as last_month_comp_count,
+        count(*) FILTER (WHERE created_at >= ${jstGte(lastMon.startDate)} AND created_at < ${jstLt(lastMon.endDate)}) as last_month_full_count,
+        count(*) FILTER (WHERE created_at >= ${jstGte(prevPeriodStart)} AND created_at < ${jstLt(prevPeriodEnd)}) as prev_period_count
+      FROM tickets
+      WHERE ${baseFilter}
+    `;
+
+    const rows: any[] = await (prisma as any).$queryRawUnsafe(sql);
+    const r = rows[0] ?? {};
+    const int = (v: any) => parseInt(String(v ?? '0'), 10);
+
+    const totalCount = int(r.total_count);
+    const ticketCount = int(r.ticket_count);
+    const callCount = int(r.call_count);
+    const todayCount = int(r.today_count);
+    const previousDayCount = int(r.prev_day_count);
+    const last7Count = int(r.last7_count);
+    const last30Count = int(r.last30_count);
+    const thisWeekCount = int(r.this_week_count);
+    const lastWeekSameCount = int(r.last_week_same_count);
+    const lastWeekFullCount = int(r.last_week_full_count);
+    const thisMonthCount = int(r.this_month_count);
+    const lastMonthCompCount = int(r.last_month_comp_count);
+    const lastMonthFullCount = int(r.last_month_full_count);
+    const prevPeriodCount = int(r.prev_period_count);
+
+    // Peak day query (separate, lightweight)
     let peakDate = '';
     let peakCount = 0;
     try {
-      const peakRows: any[] = await (prisma as any).$queryRawUnsafe(
-        `SELECT to_char(created_at AT TIME ZONE 'Asia/Tokyo', 'YYYY-MM-DD') as d, count(*)::int as c
-         FROM tickets WHERE is_excluded = false
-         AND created_at >= $1 AND created_at < $2
-         ${source !== 'ALL' ? 'AND source_key = $3' : ''}
-         GROUP BY d ORDER BY c DESC LIMIT 1`,
-        ...(source !== 'ALL' ? [range.gte, range.lt, source] : [range.gte, range.lt])
-      );
-      if (peakRows.length > 0) {
-        peakDate = peakRows[0].d;
-        peakCount = peakRows[0].c;
-      }
+      const peakSql = `
+        SELECT to_char(created_at AT TIME ZONE 'Asia/Tokyo', 'YYYY-MM-DD') as d, count(*)::int as c
+        FROM tickets WHERE ${baseFilter}
+        AND created_at >= ${jstGte(startDate)} AND created_at < ${jstLt(endDate)}
+        GROUP BY d ORDER BY c DESC LIMIT 1
+      `;
+      const peakRows: any[] = await (prisma as any).$queryRawUnsafe(peakSql);
+      if (peakRows.length > 0) { peakDate = peakRows[0].d; peakCount = int(peakRows[0].c); }
     } catch { /* */ }
 
-    // --- 前同期間比較（選択期間と同じ日数分の直前期間）---
-    const prevPeriodEnd = shiftDays(startDate, -1);
-    const prevPeriodStart = shiftDays(prevPeriodEnd, -(periodDays - 1));
-    const prevPeriodRange = jstDateRange(prevPeriodStart, prevPeriodEnd);
-    const prevPeriodWhere = await buildBaseWhere(source, channel, prevPeriodRange);
-    const prevPeriodCount = await prisma.ticket.count({ where: prevPeriodWhere as any });
+    // Compute derived values
+    const dayOverDayDiff = todayCount - previousDayCount;
+    const dayOverDayRate = previousDayCount > 0 ? Math.round((dayOverDayDiff / previousDayCount) * 1000) / 10 : 0;
+    const avg7Days = Math.round((last7Count / 7) * 10) / 10;
+    const avg30Days = Math.round((last30Count / 30) * 10) / 10;
+    const weekOverWeekDiff = thisWeekCount - lastWeekSameCount;
+    const weekOverWeekRate = lastWeekSameCount > 0 ? Math.round((weekOverWeekDiff / lastWeekSameCount) * 1000) / 10 : 0;
+    const monthOverMonthDiff = thisMonthCount - lastMonthCompCount;
+    const monthOverMonthRate = lastMonthCompCount > 0 ? Math.round((monthOverMonthDiff / lastMonthCompCount) * 1000) / 10 : 0;
+    const periodDailyAvg = periodDays > 0 ? Math.round((totalCount / periodDays) * 10) / 10 : 0;
     const periodOverPeriodDiff = totalCount - prevPeriodCount;
-    const periodOverPeriodRate = prevPeriodCount > 0
-      ? Math.round((periodOverPeriodDiff / prevPeriodCount) * 1000) / 10
-      : 0;
-
-    const data = {
-      date: endDate,
-      // 選択期間の合計
-      totalCount,
-      // チケット/コール内訳
-      ticketCount,
-      callCount,
-      // 選択期間の日平均
-      periodDailyAvg,
-      // ピーク日
-      peakDate,
-      peakCount,
-      // 前同期間比較
-      prevPeriodCount,
-      periodOverPeriodDiff,
-      periodOverPeriodRate,
-      // 個別日次
-      todayCount,
-      previousDayCount,
-      // 前日比
-      dayOverDayDiff,
-      dayOverDayRate,
-      trend: dayOverDayDiff > 0 ? 'increase' as const : dayOverDayDiff < 0 ? 'decrease' as const : 'flat' as const,
-      // 平均
-      avg7Days,
-      avg30Days,
-      // 直近7日合計
-      last7DaysCount: last7Count,
-      // 週
-      thisWeekCount,
-      lastWeekCount: lastWeekFullCount,
-      weekOverWeekDiff,
-      weekOverWeekRate,
-      // 月
-      thisMonthCount,
-      lastMonthCount: lastMonthFullCount,
-      monthOverMonthDiff,
-      monthOverMonthRate,
-    };
+    const periodOverPeriodRate = prevPeriodCount > 0 ? Math.round((periodOverPeriodDiff / prevPeriodCount) * 1000) / 10 : 0;
 
     return NextResponse.json({
       success: true,
-      data,
+      data: {
+        date: endDate, totalCount, ticketCount, callCount, periodDailyAvg,
+        peakDate, peakCount, prevPeriodCount, periodOverPeriodDiff, periodOverPeriodRate,
+        todayCount, previousDayCount, dayOverDayDiff, dayOverDayRate,
+        trend: dayOverDayDiff > 0 ? 'increase' : dayOverDayDiff < 0 ? 'decrease' : 'flat',
+        avg7Days, avg30Days, last7DaysCount: last7Count,
+        thisWeekCount, lastWeekCount: lastWeekFullCount, weekOverWeekDiff, weekOverWeekRate,
+        thisMonthCount, lastMonthCount: lastMonthFullCount, monthOverMonthDiff, monthOverMonthRate,
+      },
       meta: { lastUpdatedAt: new Date().toISOString(), populationInfo: { totalCount, excludedCount: 0 } },
     });
   } catch (error) {
